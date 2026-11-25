@@ -2,8 +2,8 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ORCHESTRA VARIABLE · 正常不重叠版</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>ORCHESTRA VARIABLE · 自适应 UI 版</title>
   <style>
     @font-face {
       font-family: "Orchestra Variable Top";
@@ -17,67 +17,143 @@
     }
     * { box-sizing: border-box; }
     html, body {
-      width: 100%; height: 100%; margin: 0; overflow: hidden;
-      background: #000; color: #f5f1e8;
+      width: 100%;
+      height: 100%;
+      height: 100dvh;
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+      color: #f5f1e8;
     }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
     #stage {
-      position: fixed; inset: 0; width: 100vw; height: 100vh;
-      min-height: 0; overflow: hidden; background: #000;
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100dvh;
+      min-height: 0;
+      overflow: hidden;
+      background: #000;
     }
     #wordContainer {
-      position: absolute; left: 50%; top: 50%;
-      transform: translate(-50%, -50%);
-      width: fit-content; display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      gap: 0.05em; 
-      user-select: none; pointer-events: none;
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -54%);
+      width: fit-content;
+      max-width: 94vw;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.05em;
+      user-select: none;
+      pointer-events: none;
       transition: gap 0.15s ease;
+      z-index: 1;
     }
     #topRow, #bottomRow {
-      display: flex; justify-content: center; white-space: nowrap;
-      letter-spacing: 0.02em; 
-      line-height: 1; 
+      display: flex;
+      justify-content: center;
+      white-space: nowrap;
+      letter-spacing: 0.02em;
+      line-height: 1;
     }
     .top-char, .bottom-char {
-      font-size: 280px; color: #f5f1e8;
-      display: inline-block; will-change: font-variation-settings;
+      font-size: 120px;
+      color: #f5f1e8;
+      display: inline-block;
+      will-change: font-variation-settings;
     }
     .top-char { font-family: "Orchestra Variable Top", serif; }
     .bottom-char { font-family: "Orchestra Variable Bottom", serif; }
+
     #footer {
-      position: absolute; left: 12px; right: 12px; bottom: max(16px, env(safe-area-inset-bottom));
-      display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px;
-      color: rgba(245,241,232,.75); font-size: 12px; letter-spacing: .06em;
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 20;
+      padding: 10px 14px max(14px, env(safe-area-inset-bottom));
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 10px 14px;
+      background: linear-gradient(to top, rgba(0, 0, 0, 0.92) 65%, rgba(0, 0, 0, 0));
+      color: rgba(245, 241, 232, 0.85);
+      font-size: clamp(11px, 1.8vw, 14px);
+      letter-spacing: 0.08em;
       font-variant-numeric: tabular-nums;
-      text-align: center;
+    }
+    #weightReadout {
+      padding: 5px 10px;
+      border: 1px solid rgba(245, 241, 232, 0.25);
+      background: rgba(0, 0, 0, 0.75);
+      color: #f5f1e8;
+      white-space: nowrap;
     }
     #startButton {
-      appearance: none; border: 1px solid rgba(245,241,232,.55);
-      padding: 8px 14px; background: #000;
-      color: #f5f1e8; font: inherit; letter-spacing: inherit;
+      appearance: none;
+      border: 1px solid rgba(245, 241, 232, 0.75);
+      padding: clamp(6px, 1.2vh, 10px) clamp(12px, 2vw, 18px);
+      background: rgba(18, 18, 18, 0.92);
+      color: #f5f1e8;
+      font: inherit;
+      letter-spacing: inherit;
       cursor: pointer;
+      white-space: nowrap;
     }
-    #startButton:disabled { opacity: .45; cursor: wait; }
+    #startButton:active {
+      background: #f5f1e8;
+      color: #000;
+    }
+    #startButton:disabled {
+      opacity: 0.45;
+      cursor: wait;
+    }
     #status {
       display: inline-block;
-      max-width: 90vw;
-      color: #f5f1e8;
+      max-width: 92vw;
+      color: rgba(245, 241, 232, 0.78);
+      text-align: center;
+      line-height: 1.35;
     }
+
     #cameraFrame {
-      position: absolute; top: 18px; right: 18px;
-      width: min(220px, 28vw); aspect-ratio: 4 / 3;
-      padding: 4px; border: 1px solid #777;
-      background: #000; overflow: hidden;
+      position: fixed;
+      top: max(12px, env(safe-area-inset-top));
+      right: max(12px, env(safe-area-inset-right));
+      width: clamp(96px, min(220px, 24vw), 220px);
+      aspect-ratio: 4 / 3;
+      padding: 3px;
+      border: 1px solid rgba(245, 241, 232, 0.45);
+      background: rgba(0, 0, 0, 0.8);
+      overflow: hidden;
+      z-index: 10;
     }
     #cameraPreview {
-      display: block; width: 100%; height: 100%;
-      object-fit: cover; background: #000;
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      background: #000;
       transform: scaleX(-1);
     }
-    @media (max-width: 600px) {
-      #cameraFrame { top: 12px; right: 12px; width: 30vw; }
+
+    @media (max-height: 520px) {
+      #wordContainer {
+        transform: translate(-50%, -56%);
+      }
+      #footer {
+        padding-top: 6px;
+        padding-bottom: max(8px, env(safe-area-inset-bottom));
+        gap: 6px 10px;
+      }
     }
+
     #cameraPlaceholder, .preview, .controls, h1, .intro, .readout, .help { display: none !important; }
   </style>
 </head>
@@ -114,6 +190,7 @@
   const topRow = document.querySelector("#topRow");
   const bottomRow = document.querySelector("#bottomRow");
   const wordContainer = document.querySelector("#wordContainer");
+  const footer = document.querySelector("#footer");
   const status = document.querySelector("#status");
   const weightReadout = document.querySelector("#weightReadout");
   const startButton = document.querySelector("#startButton");
@@ -149,38 +226,49 @@
   let lastVideoTime = -1;
 
   function updateDOM() {
-    const avgW = currentWeights.reduce((a, b) => a + b, 0) / CHAR_COUNT;
-    const weightScale = 1 - (avgW / 900) * 0.2; 
+    const vw = window.innerWidth;
+    const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    const footerHeight = footer ? footer.offsetHeight : 64;
+    const topSafe = Math.max(24, vh * 0.06);
+    const usableHeight = Math.max(80, vh - footerHeight - topSafe - 16);
+    const usableWidth = Math.max(120, vw * 0.94);
 
-    const viewportMin = Math.min(window.innerWidth, window.innerHeight);
-    const viewportMax = Math.max(window.innerWidth, window.innerHeight);
-    const isPortrait = window.innerHeight > window.innerWidth;
-    const baseMultiplier = isPortrait ? 0.22 : 0.26;
-    
-    const minAllowedSize = Math.max(36, viewportMin * 0.08);
-    const maxAllowedSize = Math.min(600, viewportMax * 0.35);
-    
-    const baseFontSize = Math.max(minAllowedSize, Math.min(maxAllowedSize, window.innerWidth * baseMultiplier));
-    const targetFontSize = baseFontSize * weightScale;
+    const avgW = currentWeights.reduce((a, b) => a + b, 0) / CHAR_COUNT;
+    const weightScale = 1 - (avgW / 900) * 0.15;
+
+    const baseGapEm = 0.05;
+    const weightGapAdd = (avgW / 900) * 0.08;
+    const gapEm = baseGapEm + weightGapAdd;
+
+    // 1. 先按可用高度估算字号（两行字 + 行间距控制在 usableHeight 内）
+    const heightBasedSize = (usableHeight / (2 + gapEm)) * 0.92;
+    // 2. 再按可用宽度估算字号（17 个字符单行约占 8.2~9.5 个 em 宽）
+    const widthBasedSize = usableWidth / 9.2;
+
+    let targetFontSize = Math.max(20, Math.min(heightBasedSize, widthBasedSize, 520)) * weightScale;
 
     for (const span of [...topSpans, ...bottomSpans]) {
       span.style.fontSize = `${targetFontSize}px`;
     }
+    wordContainer.style.gap = `${gapEm * targetFontSize}px`;
 
-    const availableWidth = window.innerWidth * 0.94;
+    // 3. 根据实际测量宽高做二次收敛，确保绝对不超出可用宽高
     const measuredWidth = Math.max(topRow.scrollWidth, bottomRow.scrollWidth);
-    const fitScale = measuredWidth > 0 ? Math.min(1, availableWidth / measuredWidth) : 1;
-    const finalFontSize = targetFontSize * fitScale;
+    const measuredHeight = wordContainer.getBoundingClientRect().height;
+
+    const widthScale = measuredWidth > 0 ? Math.min(1, usableWidth / measuredWidth) : 1;
+    const heightScale = measuredHeight > 0 ? Math.min(1, usableHeight / measuredHeight) : 1;
+    const finalFontSize = Math.max(16, targetFontSize * Math.min(widthScale, heightScale));
 
     for (const span of [...topSpans, ...bottomSpans]) {
       span.style.fontSize = `${finalFontSize}px`;
     }
-
-    const baseGapEm = 0.05;
-    const weightGapAdd = (avgW / 900) * 0.1;
-    const gapEm = baseGapEm + weightGapAdd;
-    
     wordContainer.style.gap = `${gapEm * finalFontSize}px`;
+
+    // 把文字中心略微往上偏一点，给底部 footer 留出呼吸感
+    const centerY = topSafe + usableHeight / 2;
+    wordContainer.style.top = `${centerY}px`;
+    wordContainer.style.transform = "translate(-50%, -50%)";
 
     for (let i = 0; i < CHAR_COUNT; i++) {
       const w = Math.round(currentWeights[i]);
@@ -214,7 +302,7 @@
     status.textContent = "正在请求摄像头权限…";
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error("当前浏览器环境不支持调用摄像头，请用 Safari 或 Chrome 打开");
+        throw new Error("当前浏览器环境不支持调用摄像头，请使用 Safari 或 Chrome 的 HTTPS 链接打开");
       }
 
       stream = await navigator.mediaDevices.getUserMedia({
@@ -250,6 +338,7 @@
       status.textContent = "启动失败：" + (error.message || error);
       startButton.textContent = "开启摄像头";
       startButton.disabled = false;
+      updateDOM();
     }
   }
 
@@ -458,6 +547,9 @@
   });
   window.addEventListener("beforeunload", stopCameraOnly);
   window.addEventListener("resize", updateDOM);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", updateDOM);
+  }
   updateDOM();
 </script>
 </body>
