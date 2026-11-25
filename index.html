@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>ORCHESTRA VARIABLE · 抗抖降敏版</title>
+  <title>ORCHESTRA VARIABLE · 高低与字重双抗抖版</title>
   <style>
     @font-face {
       font-family: "Orchestra Variable Top";
@@ -282,10 +282,13 @@
   const BASE_XHET = 50;
   const TOTAL_XHET = 100;
 
-  // 抗抖与降敏参数：减少微小手势抖动引起的跳变
-  const WEIGHT_DEADZONE = 20;       // 字重变化小于 20 不触发更新
-  const WEIGHT_STEP_LIMIT = 24;     // 单帧字重最大步进，避免跳变
-  const XHET_DEADZONE = 3.5;        // XHET 变化小于 3.5 不触发更新
+  // 抗抖与降敏参数（同时抑制字重与 XHET 高低微抖）
+  const WEIGHT_DEADZONE = 25;       // 字重变化小于 25 不触发更新
+  const WEIGHT_STEP_LIMIT = 24;     // 单帧字重最大步进
+  const INDEX_Y_DEADZONE = 0.025;   // 指尖垂直移动小于画面 2.5% 时锁住高度坐标
+  const INDEX_X_DEADZONE = 0.015;   // 指尖水平移动小于画面 1.5% 时锁住水平坐标
+  const XHET_DEADZONE = 8;          // 单个字母 XHET 变化小于 8 不触发更新
+  const XHET_STEP_QUANT = 5;        // XHET 按 5 为步长对齐，杜绝 1~2 刻度微颤
   const PALM_STABLE_NEED = 8;       // 手掌横向摊开需连续稳定帧数
 
   const video = document.querySelector("#video");
@@ -400,7 +403,6 @@
 
   function renderCameraPreview() {
     if (video.readyState < 2) return;
-    // 隔帧绘制预览，减少主线程占用
     if (Math.round(video.currentTime * 30) % 2 !== 0) return;
     previewContext.drawImage(video, 0, 0, cameraPreview.width, cameraPreview.height);
   }
@@ -473,13 +475,19 @@
     const indexTip = points[8];
     const palmScale = Math.max(distance(wrist, middleMcp), 0.001);
 
-    // 轻度平滑食指指尖坐标，过滤微小抖动
+    // 源头死区 + 滤波：小幅抖动直接锁住坐标，不再往下游传导
     if (smoothedIndexX === null) {
       smoothedIndexX = indexTip.x;
       smoothedIndexY = indexTip.y;
     } else {
-      smoothedIndexX += (indexTip.x - smoothedIndexX) * 0.45;
-      smoothedIndexY += (indexTip.y - smoothedIndexY) * 0.45;
+      const dx = indexTip.x - smoothedIndexX;
+      const dy = indexTip.y - smoothedIndexY;
+      if (Math.abs(dx) > INDEX_X_DEADZONE) {
+        smoothedIndexX += dx * 0.35;
+      }
+      if (Math.abs(dy) > INDEX_Y_DEADZONE) {
+        smoothedIndexY += dy * 0.35;
+      }
     }
 
     const tips = [4, 8, 12, 16, 20];
@@ -502,7 +510,6 @@
       Math.abs(indexTip.y - ringTip.y)
     );
 
-    // 滞回判定：进入要求更明确，退出放宽阈值，减少临界来回闪切
     if (!isHorizontalPalmActive) {
       if (verticalRatio < 0.28 && openness > 1.72 && tipYSpread < 0.065) {
         isHorizontalPalmActive = true;
@@ -517,7 +524,9 @@
     const letterPos = mirroredX * (CHAR_COUNT - 1);
 
     const normalizedHeight = Math.max(0, Math.min(1, (0.85 - smoothedIndexY) / 0.7));
-    const xhetDelta = (normalizedHeight - 0.5) * 150;
+    const rawDelta = (normalizedHeight - 0.5) * 150;
+    // 量化成 5 的倍数，彻底过滤高低微抖
+    const xhetDelta = Math.round(rawDelta / XHET_STEP_QUANT) * XHET_STEP_QUANT;
     const weightFromY = Math.round(normalizedHeight * 900);
 
     const xs = points.map(p => p.x);
@@ -547,7 +556,7 @@
 
       let changed = false;
       for (let i = 0; i < CHAR_COUNT; i++) {
-        if (Math.abs(currentXhetDeltas[i]) > XHET_DEADZONE) {
+        if (currentXhetDeltas[i] !== 0) {
           currentXhetDeltas[i] = 0;
           changed = true;
         }
@@ -599,7 +608,8 @@
         for (let i = 0; i < CHAR_COUNT; i++) {
           const dist = Math.abs(i - h.letterPos);
           const factor = Math.exp(-(dist * dist) / (2 * spread * spread));
-          targetDeltas[i] = h.xhetDelta * factor;
+          const val = h.xhetDelta * factor;
+          targetDeltas[i] = Math.round(val / XHET_STEP_QUANT) * XHET_STEP_QUANT;
         }
       } else {
         const lH = parsed[0];
@@ -607,16 +617,18 @@
         const span = Math.max(rH.letterPos - lH.letterPos, 0.001);
 
         for (let i = 0; i < CHAR_COUNT; i++) {
+          let val = 0;
           if (i <= lH.letterPos) {
             const dist = lH.letterPos - i;
-            targetDeltas[i] = lH.xhetDelta * Math.exp(-(dist * dist) / 4);
+            val = lH.xhetDelta * Math.exp(-(dist * dist) / 4);
           } else if (i >= rH.letterPos) {
             const dist = i - rH.letterPos;
-            targetDeltas[i] = rH.xhetDelta * Math.exp(-(dist * dist) / 4);
+            val = rH.xhetDelta * Math.exp(-(dist * dist) / 4);
           } else {
             const t = (i - lH.letterPos) / span;
-            targetDeltas[i] = lH.xhetDelta + t * (rH.xhetDelta - lH.xhetDelta);
+            val = lH.xhetDelta + t * (rH.xhetDelta - lH.xhetDelta);
           }
+          targetDeltas[i] = Math.round(val / XHET_STEP_QUANT) * XHET_STEP_QUANT;
         }
       }
 
@@ -635,7 +647,6 @@
       const currentAvgW = currentWeights.reduce((a, b) => a + b, 0) / CHAR_COUNT;
       const diff = weightHand.weightFromY - currentAvgW;
 
-      // 去掉微小 weight 抖动：只有幅度超过死区才调整，且按步长上限推进
       if (Math.abs(diff) >= WEIGHT_DEADZONE) {
         const step = Math.sign(diff) * Math.min(Math.abs(diff), WEIGHT_STEP_LIMIT);
         const nextW = Math.max(0, Math.min(900, Math.round(currentAvgW + step)));
