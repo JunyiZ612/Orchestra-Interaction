@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>ORCHESTRA VARIABLE · 自适应 UI 版</title>
+  <title>ORCHESTRA VARIABLE · 字重/字号/间距标定版</title>
   <style>
     @font-face {
       font-family: "Orchestra Variable Top";
@@ -40,18 +40,15 @@
     #wordContainer {
       position: absolute;
       left: 50%;
-      top: 46%;
+      top: 48%;
       transform: translate(-50%, -50%);
       width: fit-content;
-      max-width: 94vw;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 0.05em;
       user-select: none;
       pointer-events: none;
-      transition: gap 0.15s ease;
       z-index: 1;
     }
     #topRow, #bottomRow {
@@ -62,7 +59,6 @@
       line-height: 1;
     }
     .top-char, .bottom-char {
-      font-size: 120px;
       color: #f5f1e8;
       display: inline-block;
       will-change: font-variation-settings;
@@ -70,11 +66,68 @@
     .top-char { font-family: "Orchestra Variable Top", serif; }
     .bottom-char { font-family: "Orchestra Variable Bottom", serif; }
 
+    /* 左上角临时调试面板 */
+    #debugPanel {
+      position: fixed;
+      top: max(14px, env(safe-area-inset-top));
+      left: max(14px, env(safe-area-inset-left));
+      z-index: 30;
+      width: min(290px, 62vw);
+      padding: 10px 12px;
+      border: 1px solid rgba(245, 241, 232, 0.35);
+      background: rgba(0, 0, 0, 0.78);
+      backdrop-filter: blur(6px);
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+    .slider-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .slider-label {
+      display: flex;
+      justify-content: space-between;
+      color: rgba(245, 241, 232, 0.9);
+    }
+    .slider-label span:last-child {
+      font-weight: 600;
+      color: #fff;
+    }
+    input[type="range"] {
+      width: 100%;
+      margin: 0;
+      accent-color: #f5f1e8;
+      cursor: pointer;
+    }
+    .preset-row {
+      display: flex;
+      gap: 6px;
+      margin-top: 2px;
+    }
+    .preset-btn {
+      flex: 1;
+      appearance: none;
+      border: 1px solid rgba(245, 241, 232, 0.45);
+      background: rgba(25, 25, 25, 0.9);
+      color: #f5f1e8;
+      padding: 4px 6px;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .preset-btn:active {
+      background: #f5f1e8;
+      color: #000;
+    }
+
     #footer {
       position: fixed;
       left: 0;
       right: 0;
-      bottom: max(44px, calc(env(safe-area-inset-bottom) + 28px));
+      bottom: max(36px, calc(env(safe-area-inset-bottom) + 20px));
       z-index: 20;
       padding: 8px 14px;
       display: flex;
@@ -127,7 +180,7 @@
       position: fixed;
       top: max(14px, env(safe-area-inset-top));
       right: max(14px, env(safe-area-inset-right));
-      width: clamp(96px, min(220px, 24vw), 220px);
+      width: clamp(90px, min(200px, 22vw), 200px);
       aspect-ratio: 4 / 3;
       padding: 3px;
       border: 1px solid rgba(245, 241, 232, 0.45);
@@ -143,32 +196,56 @@
       background: #000;
       transform: scaleX(-1);
     }
-
-    @media (max-height: 520px) {
-      #footer {
-        bottom: max(22px, calc(env(safe-area-inset-bottom) + 12px));
-        padding: 6px 10px;
-        gap: 6px 10px;
-      }
-    }
-
-    #cameraPlaceholder, .preview, .controls, h1, .intro, .readout, .help { display: none !important; }
   </style>
 </head>
 <body>
   <div class="stage" id="stage">
+    <!-- 临时参数测试滑块 -->
+    <div id="debugPanel">
+      <div class="slider-group">
+        <div class="slider-label">
+          <span>字重 (wght)</span>
+          <span id="wghtVal">0</span>
+        </div>
+        <input id="wghtSlider" type="range" min="0" max="900" step="1" value="0">
+        <div class="preset-row">
+          <button type="button" class="preset-btn" id="btnMinWght">最细 (0)</button>
+          <button type="button" class="preset-btn" id="btnMaxWght">最粗 (900)</button>
+        </div>
+      </div>
+
+      <div class="slider-group">
+        <div class="slider-label">
+          <span>字号 (font-size)</span>
+          <span id="sizeVal">110 px</span>
+        </div>
+        <input id="sizeSlider" type="range" min="24" max="360" step="1" value="110">
+      </div>
+
+      <div class="slider-group">
+        <div class="slider-label">
+          <span>行间距 (gap)</span>
+          <span id="gapVal">6 px</span>
+        </div>
+        <input id="gapSlider" type="range" min="-80" max="120" step="1" value="6">
+      </div>
+    </div>
+
     <div id="wordContainer" aria-label="ORCHESTRAVARIABLE">
       <div id="topRow"></div>
       <div id="bottomRow"></div>
     </div>
+
     <div id="cameraFrame" aria-label="摄像头画面">
       <canvas id="cameraPreview" width="320" height="240"></canvas>
     </div>
+
     <div id="footer">
       <span id="weightReadout">wght 0</span>
       <button id="startButton" type="button">开启摄像头</button>
       <span id="status" aria-live="polite"></span>
     </div>
+
     <video id="video" playsinline muted style="display:none"></video>
   </div>
 
@@ -188,10 +265,19 @@
   const topRow = document.querySelector("#topRow");
   const bottomRow = document.querySelector("#bottomRow");
   const wordContainer = document.querySelector("#wordContainer");
-  const footer = document.querySelector("#footer");
   const status = document.querySelector("#status");
   const weightReadout = document.querySelector("#weightReadout");
   const startButton = document.querySelector("#startButton");
+
+  // 滑块控件
+  const wghtSlider = document.querySelector("#wghtSlider");
+  const sizeSlider = document.querySelector("#sizeSlider");
+  const gapSlider = document.querySelector("#gapSlider");
+  const wghtVal = document.querySelector("#wghtVal");
+  const sizeVal = document.querySelector("#sizeVal");
+  const gapVal = document.querySelector("#gapVal");
+  const btnMinWght = document.querySelector("#btnMinWght");
+  const btnMaxWght = document.querySelector("#btnMaxWght");
 
   const topSpans = [];
   const bottomSpans = [];
@@ -212,6 +298,10 @@
     bottomSpans.push(bSpan);
   }
 
+  // 根据当前屏幕宽度给滑块一个合理的初始字号
+  const initialSize = Math.max(36, Math.min(240, Math.round((window.innerWidth * 0.9) / 9.2)));
+  sizeSlider.value = String(initialSize);
+
   const currentWeights = new Array(CHAR_COUNT).fill(0);
   const currentXhetDeltas = new Array(CHAR_COUNT).fill(0);
 
@@ -224,52 +314,28 @@
   let lastVideoTime = -1;
 
   function updateDOM() {
-    const vw = window.innerWidth;
-    const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-    const footerRect = footer ? footer.getBoundingClientRect() : { height: 70, top: vh - 90 };
-    const bottomReserved = Math.max(80, vh - footerRect.top + 12);
-    const topSafe = Math.max(24, vh * 0.06);
-    const usableHeight = Math.max(80, vh - bottomReserved - topSafe);
-    const usableWidth = Math.max(120, vw * 0.94);
-
+    const fontSize = Number(sizeSlider.value);
+    const gapPx = Number(gapSlider.value);
     const avgW = currentWeights.reduce((a, b) => a + b, 0) / CHAR_COUNT;
-    const weightScale = 1 - (avgW / 900) * 0.15;
 
-    const baseGapEm = 0.05;
-    const weightGapAdd = (avgW / 900) * 0.08;
-    const gapEm = baseGapEm + weightGapAdd;
+    // 同步滑块读数显示
+    wghtSlider.value = String(Math.round(avgW));
+    wghtVal.textContent = String(Math.round(avgW));
+    sizeVal.textContent = `${fontSize} px`;
+    gapVal.textContent = `${gapPx} px`;
 
-    const heightBasedSize = (usableHeight / (2 + gapEm)) * 0.92;
-    const widthBasedSize = usableWidth / 9.2;
-
-    let targetFontSize = Math.max(20, Math.min(heightBasedSize, widthBasedSize, 520)) * weightScale;
-
-    for (const span of [...topSpans, ...bottomSpans]) {
-      span.style.fontSize = `${targetFontSize}px`;
-    }
-    wordContainer.style.gap = `${gapEm * targetFontSize}px`;
-
-    const measuredWidth = Math.max(topRow.scrollWidth, bottomRow.scrollWidth);
-    const measuredHeight = wordContainer.getBoundingClientRect().height;
-
-    const widthScale = measuredWidth > 0 ? Math.min(1, usableWidth / measuredWidth) : 1;
-    const heightScale = measuredHeight > 0 ? Math.min(1, usableHeight / measuredHeight) : 1;
-    const finalFontSize = Math.max(16, targetFontSize * Math.min(widthScale, heightScale));
-
-    for (const span of [...topSpans, ...bottomSpans]) {
-      span.style.fontSize = `${finalFontSize}px`;
-    }
-    wordContainer.style.gap = `${gapEm * finalFontSize}px`;
-
-    const centerY = topSafe + usableHeight / 2;
-    wordContainer.style.top = `${centerY}px`;
-    wordContainer.style.transform = "translate(-50%, -50%)";
+    // 直接应用滑块的字号与间距，无缓动、无自动覆盖
+    wordContainer.style.gap = `${gapPx}px`;
 
     for (let i = 0; i < CHAR_COUNT; i++) {
       const w = Math.round(currentWeights[i]);
       const delta = currentXhetDeltas[i];
       const bottomXhet = Math.min(100, Math.max(0, 50 + delta));
       const topXhet = 100 - bottomXhet;
+
+      topSpans[i].style.fontSize = `${fontSize}px`;
+      bottomSpans[i].style.fontSize = `${fontSize}px`;
+
       topSpans[i].style.fontVariationSettings =
         `"wght" ${w}, "XHET" ${Math.round(topXhet)}, "wdth" 75, "opsz" 72`;
       bottomSpans[i].style.fontVariationSettings =
@@ -277,6 +343,26 @@
     }
     weightReadout.textContent = `wght ${Math.round(avgW)}`;
   }
+
+  // 滑块事件：立即生效
+  wghtSlider.addEventListener("input", () => {
+    const w = Number(wghtSlider.value);
+    currentWeights.fill(w);
+    updateDOM();
+  });
+
+  sizeSlider.addEventListener("input", updateDOM);
+  gapSlider.addEventListener("input", updateDOM);
+
+  btnMinWght.addEventListener("click", () => {
+    currentWeights.fill(0);
+    updateDOM();
+  });
+
+  btnMaxWght.addEventListener("click", () => {
+    currentWeights.fill(900);
+    updateDOM();
+  });
 
   function renderCameraPreview() {
     if (video.readyState < 2) return;
@@ -290,32 +376,6 @@
       pixels[i] = pixels[i + 1] = pixels[i + 2] = value;
     }
     previewContext.putImageData(frame, 0, 0);
-  }
-
-  async function createHandLandmarkerWithFallback(vision) {
-    const modelUrl =
-      "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
-    try {
-      return await HandLandmarker.createFromOptions(vision, {
-        baseOptions: {
-          modelAssetPath: modelUrl,
-          delegate: "GPU"
-        },
-        runningMode: "VIDEO",
-        numHands: 2
-      });
-    } catch (gpuError) {
-      console.warn("GPU delegate failed, falling back to CPU:", gpuError);
-      status.textContent = "GPU 初始化失败，正在切换 CPU 模式…";
-      return await HandLandmarker.createFromOptions(vision, {
-        baseOptions: {
-          modelAssetPath: modelUrl,
-          delegate: "CPU"
-        },
-        runningMode: "VIDEO",
-        numHands: 2
-      });
-    }
   }
 
   async function start() {
@@ -340,7 +400,14 @@
         "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
       );
 
-      landmarker = await createHandLandmarkerWithFallback(vision);
+      landmarker = await HandLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+          delegate: "GPU"
+        },
+        runningMode: "VIDEO",
+        numHands: 2
+      });
 
       status.textContent = "请将一只手横向摊开";
       startButton.textContent = "终止摄像";
@@ -361,12 +428,8 @@
       lastVideoTime = video.currentTime;
       renderCameraPreview();
       if (landmarker) {
-        try {
-          const results = landmarker.detectForVideo(video, performance.now());
-          updateFromResults(results);
-        } catch (detectError) {
-          console.error("Detect frame error:", detectError);
-        }
+        const results = landmarker.detectForVideo(video, performance.now());
+        updateFromResults(results);
       }
     }
     animationId = requestAnimationFrame(loop);
@@ -515,11 +578,10 @@
       }
     }
 
+    // 去掉加粗缓动：直接同步目标字重
     if (weightHand && palmStableFrames >= PALM_STABLE_NEED) {
       const targetW = weightHand.weightFromY;
-      for (let i = 0; i < CHAR_COUNT; i++) {
-        currentWeights[i] += (targetW - currentWeights[i]) * 0.12;
-      }
+      currentWeights.fill(targetW);
     }
 
     updateDOM();
@@ -564,10 +626,6 @@
     else start();
   });
   window.addEventListener("beforeunload", stopCameraOnly);
-  window.addEventListener("resize", updateDOM);
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener("resize", updateDOM);
-  }
   updateDOM();
 </script>
 </body>
