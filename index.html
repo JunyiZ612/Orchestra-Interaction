@@ -240,7 +240,7 @@
 
       <div class="xhet-info">
         <span>XHET 基准 / 总和</span>
-        <span id="xhetBaseVal">50 + 50 = 100</span>
+        <span>50 + 50 = 100</span>
       </div>
     </div>
 
@@ -278,9 +278,9 @@
   const MIN_GAP_PX = 0;
   const MAX_GAP_PX = 55;
 
-  // XHET 基准：最细 50 + 50 = 100；最粗 75 + 75 = 150
-  const MIN_BASE_XHET = 50;
-  const MAX_BASE_XHET = 75;
+  // 上下 XHET 起始点统一为 50（总和恒为 100）
+  const BASE_XHET = 50;
+  const TOTAL_XHET = 100;
 
   const video = document.querySelector("#video");
   const cameraPreview = document.querySelector("#cameraPreview");
@@ -299,7 +299,6 @@
   const wghtVal = document.querySelector("#wghtVal");
   const sizeVal = document.querySelector("#sizeVal");
   const gapVal = document.querySelector("#gapVal");
-  const xhetBaseVal = document.querySelector("#xhetBaseVal");
   const btnMinWght = document.querySelector("#btnMinWght");
   const btnMaxWght = document.querySelector("#btnMaxWght");
 
@@ -346,31 +345,21 @@
     const fontSize = Number(sizeSlider.value);
     const gapPx = Number(gapSlider.value);
     const avgW = currentWeights.reduce((a, b) => a + b, 0) / CHAR_COUNT;
-    const t = Math.max(0, Math.min(1, avgW / 900));
-
-    // 当前字重下的 XHET 基准中点（50 -> 75）与上下总和（100 -> 150）
-    const baseXhet = MIN_BASE_XHET + (MAX_BASE_XHET - MIN_BASE_XHET) * t;
-    const totalXhet = baseXhet * 2;
 
     // 同步滑块和状态显示
     wghtSlider.value = String(Math.round(avgW));
     wghtVal.textContent = String(Math.round(avgW));
     sizeVal.textContent = `${fontSize} px`;
     gapVal.textContent = `${gapPx} px`;
-    xhetBaseVal.textContent = `${Math.round(baseXhet)} + ${Math.round(baseXhet)} = ${Math.round(totalXhet)}`;
 
     // 直接应用当前间距与字号（无缓动）
     wordContainer.style.gap = `${gapPx}px`;
 
     for (let i = 0; i < CHAR_COUNT; i++) {
       const w = Math.round(currentWeights[i]);
-      const charT = Math.max(0, Math.min(1, w / 900));
-      const charBaseXhet = MIN_BASE_XHET + (MAX_BASE_XHET - MIN_BASE_XHET) * charT;
-      const charTotalXhet = charBaseXhet * 2;
-
       const delta = currentXhetDeltas[i];
-      const bottomXhet = Math.min(charTotalXhet, Math.max(0, charBaseXhet + delta));
-      const topXhet = charTotalXhet - bottomXhet;
+      const bottomXhet = Math.min(TOTAL_XHET, Math.max(0, BASE_XHET + delta));
+      const topXhet = TOTAL_XHET - bottomXhet;
 
       topSpans[i].style.fontSize = `${fontSize}px`;
       bottomSpans[i].style.fontSize = `${fontSize}px`;
@@ -517,7 +506,6 @@
     const letterPos = mirroredX * (CHAR_COUNT - 1);
 
     const normalizedHeight = Math.max(0, Math.min(1, (0.85 - indexTip.y) / 0.7));
-    // 偏移幅度随当前 XHET 基准同步（最细 ±75，最粗 ±112.5）
     const xhetDelta = (normalizedHeight - 0.5) * 150;
     const weightFromY = Math.round(normalizedHeight * 900);
 
