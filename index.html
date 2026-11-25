@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>ORCHESTRA VARIABLE · iPad 间距与字号调试版</title>
+  <title>ORCHESTRA VARIABLE · 手势可变字体</title>
   <style>
     @font-face {
       font-family: "Orchestra Variable Top";
@@ -18,7 +18,7 @@
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     html, body {
       width: 100%; height: 100%; margin: 0; overflow: hidden;
-      background: #000; color: #f5f1e8;
+      background: #000; color: #fff;
       touch-action: manipulation;
     }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
@@ -41,28 +41,25 @@
       letter-spacing: 0.02em; line-height: 1;
     }
     .top-char, .bottom-char {
-      font-size: 280px; line-height: 1; color: #f5f1e8;
+      font-size: 280px; line-height: 1; color: #fff;
       display: inline-block; will-change: font-variation-settings;
     }
     .top-char { font-family: "Orchestra Variable Top", serif; }
     .bottom-char { font-family: "Orchestra Variable Bottom", serif; }
 
-    /* 左上角 iPad 滑动调试面板 */
+    /* 纯黑白、默认收起的精简调试面板 */
     #debugPanel {
       position: absolute;
       top: calc(max(16px, env(safe-area-inset-top)) + 6px);
       left: calc(max(16px, env(safe-area-inset-left)) + 6px);
-      width: min(320px, calc(100vw - 260px));
-      max-width: 340px;
-      padding: 12px 14px;
-      background: rgba(18, 18, 20, 0.88);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border: 1px solid rgba(245, 241, 232, 0.22);
-      border-radius: 12px;
+      width: min(290px, calc(100vw - 260px));
+      max-width: 300px;
+      padding: 10px 12px;
+      background: #000;
+      border: 1px solid rgba(255, 255, 255, 0.45);
       z-index: 20;
-      font-size: 12px;
-      color: #f5f1e8;
+      font-size: 11px;
+      color: #fff;
     }
     @media (max-width: 680px) {
       #debugPanel {
@@ -78,26 +75,16 @@
       gap: 8px;
     }
     .debug-title {
-      font-size: 11px; letter-spacing: 0.06em;
-      color: rgba(245, 241, 232, 0.75);
-      display: flex; align-items: center; gap: 6px;
-    }
-    .mode-badge {
-      padding: 2px 6px; border-radius: 999px; font-size: 10px;
-      background: rgba(255, 204, 0, 0.18); color: #ffd60a;
-      border: 1px solid rgba(255, 214, 10, 0.35);
-    }
-    .mode-badge.live {
-      background: rgba(52, 199, 89, 0.18); color: #34c759;
-      border-color: rgba(52, 199, 89, 0.35);
+      font-size: 11px; letter-spacing: 0.08em;
+      color: #fff;
     }
     #toggleDebugBtn {
-      appearance: none; background: rgba(255, 255, 255, 0.08);
-      color: #f5f1e8; border: 1px solid rgba(245, 241, 232, 0.25);
-      border-radius: 6px; padding: 4px 8px; font-size: 11px; cursor: pointer;
+      appearance: none; background: #000;
+      color: #fff; border: 1px solid rgba(255, 255, 255, 0.55);
+      padding: 4px 8px; font-size: 11px; cursor: pointer;
     }
     .debug-body {
-      margin-top: 12px; display: flex; flex-direction: column; gap: 11px;
+      margin-top: 12px; display: flex; flex-direction: column; gap: 10px;
     }
     .slider-row {
       display: flex; flex-direction: column; gap: 4px;
@@ -105,44 +92,30 @@
     .slider-label {
       display: flex; justify-content: space-between; align-items: center;
       font-variant-numeric: tabular-nums; font-size: 11px;
-      color: rgba(245, 241, 232, 0.9);
+      color: #fff;
     }
     .slider-val {
-      color: #ffd60a; font-weight: 600;
+      color: #fff; opacity: 0.85;
     }
     input[type="range"] {
-      width: 100%; height: 26px; margin: 0;
-      accent-color: #f5f1e8; cursor: pointer;
-    }
-    .debug-actions {
-      display: flex; gap: 8px; padding-top: 2px;
-    }
-    .debug-btn {
-      flex: 1; appearance: none;
-      padding: 8px 10px; border-radius: 8px;
-      border: 1px solid rgba(245, 241, 232, 0.3);
-      background: rgba(255, 255, 255, 0.08);
-      color: #f5f1e8; font-size: 11px; cursor: pointer;
-    }
-    .debug-btn.primary {
-      background: #f5f1e8; color: #000; border-color: #f5f1e8; font-weight: 600;
+      width: 100%; height: 24px; margin: 0;
+      accent-color: #fff; cursor: pointer;
     }
 
-    /* 抬高后的底部控制栏，适配 iPad 触控与安全区 */
+    /* 适配 iPad 窗口的底部控制栏 */
     #footer {
       position: absolute; left: 16px; right: 16px;
       bottom: calc(max(24px, env(safe-area-inset-bottom)) + 16px);
       display: flex; align-items: center; justify-content: center; gap: 16px;
-      color: rgba(245,241,232,.72); font-size: 12px; letter-spacing: .08em;
+      color: rgba(255, 255, 255, 0.72); font-size: 12px; letter-spacing: .08em;
       font-variant-numeric: tabular-nums;
       z-index: 15;
     }
     #startButton {
-      appearance: none; border: 1px solid rgba(245,241,232,.65);
-      border-radius: 8px;
+      appearance: none; border: 1px solid rgba(255, 255, 255, 0.65);
       padding: 10px 18px; min-height: 40px;
-      background: rgba(0, 0, 0, 0.85);
-      color: #f5f1e8; font: inherit; letter-spacing: inherit;
+      background: #000;
+      color: #fff; font: inherit; letter-spacing: inherit;
       cursor: pointer;
     }
     #startButton:disabled { opacity: .45; cursor: wait; }
@@ -153,7 +126,7 @@
       top: calc(max(16px, env(safe-area-inset-top)) + 6px);
       right: calc(max(16px, env(safe-area-inset-right)) + 6px);
       width: min(200px, 26vw); aspect-ratio: 4 / 3;
-      padding: 4px; border: 1px solid #777;
+      padding: 4px; border: 1px solid rgba(255, 255, 255, 0.45);
       background: #000; overflow: hidden;
       z-index: 10;
     }
@@ -170,13 +143,10 @@
 </head>
 <body>
   <div class="stage" id="stage">
-    <div id="debugPanel">
+    <div id="debugPanel" class="collapsed">
       <div class="debug-header">
-        <div class="debug-title">
-          <span>参数滑块测试</span>
-          <span id="modeBadge" class="mode-badge live">手势联动</span>
-        </div>
-        <button id="toggleDebugBtn" type="button">收起</button>
+        <span class="debug-title">参数微调</span>
+        <button id="toggleDebugBtn" type="button">展开</button>
       </div>
       <div class="debug-body">
         <div class="slider-row">
@@ -192,7 +162,7 @@
             <span>行间距 (gap em)</span>
             <span id="gapVal" class="slider-val">-0.05</span>
           </div>
-          <input id="gapSlider" type="range" min="-0.90" max="0.80" step="0.01" value="-0.05">
+          <input id="gapSlider" type="range" min="-0.90" max="1.00" step="0.01" value="-0.05">
         </div>
 
         <div class="slider-row">
@@ -200,12 +170,7 @@
             <span>字号倍率 (size scale)</span>
             <span id="sizeVal" class="slider-val">1.00</span>
           </div>
-          <input id="sizeSlider" type="range" min="0.40" max="1.60" step="0.01" value="1.00">
-        </div>
-
-        <div class="debug-actions">
-          <button id="resumeGestureBtn" class="debug-btn" type="button">恢复手势</button>
-          <button id="copyParamsBtn" class="debug-btn primary" type="button">复制参数</button>
+          <input id="sizeSlider" type="range" min="0.30" max="1.60" step="0.01" value="1.00">
         </div>
       </div>
     </div>
@@ -248,18 +213,14 @@
   const weightReadout = document.querySelector("#weightReadout");
   const startButton = document.querySelector("#startButton");
 
-  // 调试控件
   const debugPanel = document.querySelector("#debugPanel");
   const toggleDebugBtn = document.querySelector("#toggleDebugBtn");
-  const modeBadge = document.querySelector("#modeBadge");
   const weightSlider = document.querySelector("#weightSlider");
   const gapSlider = document.querySelector("#gapSlider");
   const sizeSlider = document.querySelector("#sizeSlider");
   const weightVal = document.querySelector("#weightVal");
   const gapVal = document.querySelector("#gapVal");
   const sizeVal = document.querySelector("#sizeVal");
-  const resumeGestureBtn = document.querySelector("#resumeGestureBtn");
-  const copyParamsBtn = document.querySelector("#copyParamsBtn");
 
   const topSpans = [];
   const bottomSpans = [];
@@ -283,10 +244,9 @@
   const currentWeights = new Array(CHAR_COUNT).fill(0);
   const currentXhetDeltas = new Array(CHAR_COUNT).fill(0);
 
-  // 手动调试状态
-  let isManualOverride = false;
-  let manualGapEm = parseFloat(gapSlider.value);
-  let manualSizeScale = parseFloat(sizeSlider.value);
+  // 手动覆盖状态（当用户拖动 gap 或 size 滑块时生效；拖动 weight 滑块则直接改字重，并允许后续手势继续更新）
+  let customGapEm = null;
+  let customSizeScale = null;
 
   let palmStableFrames = 0;
   const PALM_STABLE_NEED = 6;
@@ -296,14 +256,22 @@
   let animationId = null;
   let lastVideoTime = -1;
 
-  function syncModeBadge() {
-    if (isManualOverride) {
-      modeBadge.textContent = "手动滑块";
-      modeBadge.classList.remove("live");
-    } else {
-      modeBadge.textContent = "手势联动";
-      modeBadge.classList.add("live");
+  // 根据实测锚点 (0, -0.05), (500, 0.31), (900, 0.58) 进行分段线性插值
+  function getDefaultGapEm(w) {
+    const clampedW = Math.max(0, Math.min(900, w));
+    if (clampedW <= 500) {
+      return -0.05 + (clampedW / 500) * (0.31 - (-0.05));
     }
+    return 0.31 + ((clampedW - 500) / 400) * (0.58 - 0.31);
+  }
+
+  // 根据实测锚点 (0, 1.00), (500, 0.73), (900, 0.50) 进行分段线性插值
+  function getDefaultSizeScale(w) {
+    const clampedW = Math.max(0, Math.min(900, w));
+    if (clampedW <= 500) {
+      return 1.00 + (clampedW / 500) * (0.73 - 1.00);
+    }
+    return 0.73 + ((clampedW - 500) / 400) * (0.50 - 0.73);
   }
 
   function updateDOM() {
@@ -311,7 +279,12 @@
     const viewH = window.innerHeight;
     const avgW = currentWeights.reduce((a, b) => a + b, 0) / CHAR_COUNT;
 
-    // 基准字号随当前 iPad 窗口宽高自适应
+    const defaultGapEm = getDefaultGapEm(avgW);
+    const defaultSizeScale = getDefaultSizeScale(avgW);
+
+    const activeGapEm = customGapEm !== null ? customGapEm : defaultGapEm;
+    const activeSizeScale = customSizeScale !== null ? customSizeScale : defaultSizeScale;
+
     const viewportMin = Math.min(viewW, viewH);
     const viewportMax = Math.max(viewW, viewH);
     const isPortrait = viewH > viewW;
@@ -320,9 +293,8 @@
     const minAllowedSize = Math.max(32, viewportMin * 0.07);
     const maxAllowedSize = Math.min(620, viewportMax * 0.36);
 
-    const autoWeightScale = isManualOverride ? 1 : (1 - (avgW / 900) * 0.2);
     const rawBaseSize = Math.max(minAllowedSize, Math.min(maxAllowedSize, viewW * baseMultiplier));
-    const targetFontSize = rawBaseSize * autoWeightScale * manualSizeScale;
+    const targetFontSize = rawBaseSize * activeSizeScale;
 
     for (const span of [...topSpans, ...bottomSpans]) {
       span.style.fontSize = `${targetFontSize}px`;
@@ -337,11 +309,7 @@
       span.style.fontSize = `${finalFontSize}px`;
     }
 
-    const gapEm = isManualOverride
-      ? manualGapEm
-      : (-0.05 + (avgW / 900) * 0.40);
-
-    wordContainer.style.gap = `${gapEm * finalFontSize}px`;
+    wordContainer.style.gap = `${activeGapEm * finalFontSize}px`;
 
     for (let i = 0; i < CHAR_COUNT; i++) {
       const w = Math.round(currentWeights[i]);
@@ -354,68 +322,42 @@
         `"wght" ${w}, "XHET" ${Math.round(bottomXhet)}, "wdth" 75, "opsz" 72`;
     }
 
-    weightVal.textContent = `${Math.round(avgW)}`;
-    gapVal.textContent = `${gapEm.toFixed(2)}`;
-    sizeVal.textContent = `${manualSizeScale.toFixed(2)}`;
-    weightReadout.textContent = `wght ${Math.round(avgW)} · gap ${gapEm.toFixed(2)}`;
+    const roundedW = Math.round(avgW);
+    weightVal.textContent = `${roundedW}`;
+    gapVal.textContent = `${activeGapEm.toFixed(2)}`;
+    sizeVal.textContent = `${activeSizeScale.toFixed(2)}`;
+    weightReadout.textContent = `wght ${roundedW}`;
 
-    if (!isManualOverride) {
-      weightSlider.value = `${Math.round(avgW)}`;
-      gapSlider.value = `${gapEm.toFixed(2)}`;
+    if (document.activeElement !== weightSlider) {
+      weightSlider.value = `${roundedW}`;
+    }
+    if (document.activeElement !== gapSlider) {
+      gapSlider.value = `${activeGapEm.toFixed(2)}`;
+    }
+    if (document.activeElement !== sizeSlider) {
+      sizeSlider.value = `${activeSizeScale.toFixed(2)}`;
     }
   }
 
-  // 滑块事件监听
   toggleDebugBtn.addEventListener("click", () => {
     const collapsed = debugPanel.classList.toggle("collapsed");
     toggleDebugBtn.textContent = collapsed ? "展开" : "收起";
   });
 
   weightSlider.addEventListener("input", () => {
-    isManualOverride = true;
-    syncModeBadge();
     const w = Number(weightSlider.value);
     currentWeights.fill(w);
     updateDOM();
   });
 
   gapSlider.addEventListener("input", () => {
-    isManualOverride = true;
-    syncModeBadge();
-    manualGapEm = Number(gapSlider.value);
+    customGapEm = Number(gapSlider.value);
     updateDOM();
   });
 
   sizeSlider.addEventListener("input", () => {
-    isManualOverride = true;
-    syncModeBadge();
-    manualSizeScale = Number(sizeSlider.value);
+    customSizeScale = Number(sizeSlider.value);
     updateDOM();
-  });
-
-  resumeGestureBtn.addEventListener("click", () => {
-    isManualOverride = false;
-    manualSizeScale = 1.0;
-    sizeSlider.value = "1.00";
-    syncModeBadge();
-    updateDOM();
-  });
-
-  copyParamsBtn.addEventListener("click", async () => {
-    const avgW = Math.round(currentWeights.reduce((a, b) => a + b, 0) / CHAR_COUNT);
-    const currentGap = isManualOverride
-      ? manualGapEm.toFixed(2)
-      : (-0.05 + (avgW / 900) * 0.40).toFixed(2);
-    const summary = `wght=${avgW}, gapEm=${currentGap}, sizeScale=${manualSizeScale.toFixed(2)}, screen=${window.innerWidth}x${window.innerHeight}`;
-    try {
-      await navigator.clipboard.writeText(summary);
-      copyParamsBtn.textContent = "已复制";
-    } catch {
-      copyParamsBtn.textContent = avgW + " / " + currentGap;
-    }
-    setTimeout(() => {
-      copyParamsBtn.textContent = "复制参数";
-    }, 1200);
   });
 
   function renderCameraPreview() {
@@ -628,7 +570,7 @@
       }
     }
 
-    if (!isManualOverride && weightHand && palmStableFrames >= PALM_STABLE_NEED) {
+    if (weightHand && palmStableFrames >= PALM_STABLE_NEED) {
       const targetW = weightHand.weightFromY;
       for (let i = 0; i < CHAR_COUNT; i++) {
         currentWeights[i] += (targetW - currentWeights[i]) * 0.12;
@@ -679,7 +621,6 @@
   window.addEventListener("beforeunload", stopCameraOnly);
   window.addEventListener("resize", updateDOM);
   window.visualViewport?.addEventListener("resize", updateDOM);
-  syncModeBadge();
   updateDOM();
 </script>
 </body>
