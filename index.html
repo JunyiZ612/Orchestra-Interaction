@@ -51,8 +51,10 @@
       gap: 0.05em;
       user-select: none;
       pointer-events: none;
-      transition: gap 0.15s ease;
+      transition: none;
       z-index: 1;
+      isolation: isolate;
+      contain: layout style;
     }
     #topRow, #bottomRow {
       display: flex;
@@ -60,12 +62,19 @@
       white-space: nowrap;
       letter-spacing: 0.02em;
       line-height: 1;
+      /* Keep rows in normal paint flow; avoid forced GPU layers on iPad. */
+      position: relative;
+      isolation: isolate;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: geometricPrecision;
     }
     .top-char, .bottom-char {
       font-size: 120px;
       color: #f5f1e8;
       display: inline-block;
-      /* Avoid forcing a separate compositing layer for every glyph on iPad. */
+      /* Keep glyphs on the row layer, not one compositor layer per letter. */
+      -webkit-font-smoothing: antialiased;
+      text-rendering: geometricPrecision;
     }
     .top-char { font-family: "Orchestra Variable Top", serif; }
     .bottom-char { font-family: "Orchestra Variable Bottom", serif; }
@@ -142,6 +151,7 @@
       object-fit: cover;
       background: #000;
       transform: scaleX(-1);
+      filter: grayscale(1) contrast(1.25);
     }
 
     @media (max-height: 520px) {
@@ -159,7 +169,7 @@
       z-index: 30;
       width: min(300px, 46vw);
       padding: 12px 14px;
-      background: rgba(0,0,0,.82);
+      background: #000;
       border: 1px solid rgba(245,241,232,.35);
       color: #f5f1e8;
       font-size: 12px;
@@ -167,6 +177,8 @@
       touch-action: pan-y;
     }
     #testPanel h2 { margin: 0 0 10px; font-size: 12px; font-weight: 500; }
+    #testPanel, #footer, #cameraFrame { -webkit-backface-visibility: hidden; backface-visibility: hidden; }
+    input[type="range"] { touch-action: pan-x; }
     .sliderRow { display: grid; grid-template-columns: 58px 1fr 44px; gap: 8px; align-items: center; margin: 9px 0; }
     .sliderRow input { width: 100%; min-width: 0; accent-color: #f5f1e8; }
     .sliderValue { text-align: right; font-variant-numeric: tabular-nums; }
@@ -195,7 +207,7 @@
       <div id="testHint">临时测试：滑动记录最细/最粗时合适的字号和行距。</div>
     </section>
     <div id="cameraFrame" aria-label="摄像头画面">
-      <canvas id="cameraPreview" width="320" height="240"></canvas>
+      <canvas id="cameraPreview" width="160" height="120"></canvas>
     </div>
     <div id="footer">
       <span id="weightReadout">wght 0</span>
@@ -217,7 +229,7 @@
 
   const video = document.querySelector("#video");
   const cameraPreview = document.querySelector("#cameraPreview");
-  const previewContext = cameraPreview.getContext("2d", { willReadFrequently: true });
+  const previewContext = cameraPreview.getContext("2d", { alpha: false, desynchronized: true });
   const topRow = document.querySelector("#topRow");
   const bottomRow = document.querySelector("#bottomRow");
   const wordContainer = document.querySelector("#wordContainer");
@@ -272,9 +284,25 @@
   let lastPreviewTime = 0;
   let lastDetectionTime = 0;
   const DETECTION_INTERVAL = 65; // about 15 fps on iPad
-  const PREVIEW_INTERVAL = 120; // about 8 fps; preview is decorative
+  const PREVIEW_INTERVAL = 220; // about 4.5 fps; preview is decorative
   let xhetMissFrames = 0;
   const XHET_HOLD_FRAMES = 8;
+  let visualUpdateQueued = false;
+  let layoutDirty = true;
+
+  function queueVisualUpdate({ layout = false } = {}) {
+    if (layout) layoutDirty = true;
+    if (visualUpdateQueued) return;
+    visualUpdateQueued = true;
+    requestAnimationFrame(() => {
+      visualUpdateQueued = false;
+      if (layoutDirty) {
+        updateLayout();
+        layoutDirty = false;
+      }
+      applyAxes();
+    });
+  }
 
   function updateLayout() {
     const vw = window.innerWidth;
@@ -285,8 +313,11 @@
     const bottomReserved = Math.max(80, vh - footerRect.top + 12);
     const usableHeight = Math.max(100, vh - topReserved - bottomReserved);
     const usableWidth = Math.max(120, vw * 0.94);
-    const fontSize = Math.min(testFontSize, usableHeight * 0.48, usableWidth / 9.2);
-    for (const span of [...topSpans, ...bottomSpans]) span.style.fontSize = `${fontSize}px`;
+    // Test slider controls the actual CSS size without hidden auto-scaling.
+    const fontSize = testFontSize;
+    for (const span of [...topSpans, ...bottomSpans]) {
+      if (span.style.fontSize !== `${fontSize}px`) span.style.fontSize = `${fontSize}px`;
+    }
     wordContainer.style.gap = `${testGapPx}px`;
     wordContainer.style.top = `${topReserved + usableHeight / 2}px`;
     wordContainer.style.transform = "translate(-50%, -50%)";
@@ -297,50 +328,47 @@
       const w = Math.round(manualMode ? manualWeight : currentWeights[i]);
       const bottomXhet = Math.round(Math.max(0, Math.min(100, 50 + currentXhetDeltas[i])));
       const topXhet = 100 - bottomXhet;
-      topSpans[i].style.fontVariationSettings = `"wght" ${w}, "XHET" ${topXhet}, "wdth" 75, "opsz" 72`;
-      bottomSpans[i].style.fontVariationSettings = `"wght" ${w}, "XHET" ${bottomXhet}, "wdth" 75, "opsz" 72`;
+      const topSettings = `"wght" ${w}, "XHET" ${topXhet}, "wdth" 75, "opsz" 72`;
+      const bottomSettings = `"wght" ${w}, "XHET" ${bottomXhet}, "wdth" 75, "opsz" 72`;
+      if (topSpans[i].style.fontVariationSettings !== topSettings) {
+        topSpans[i].style.fontVariationSettings = topSettings;
+      }
+      if (bottomSpans[i].style.fontVariationSettings !== bottomSettings) {
+        bottomSpans[i].style.fontVariationSettings = bottomSettings;
+      }
     }
     const average = manualMode ? manualWeight : currentWeights.reduce((a,b) => a+b, 0) / CHAR_COUNT;
     weightReadout.textContent = `wght ${Math.round(average)}`;
   }
 
   function updateDOM() {
-    updateLayout();
-    applyAxes();
+    queueVisualUpdate({ layout: true });
   }
 
   gapSlider.addEventListener("input", () => {
     testGapPx = Number(gapSlider.value);
     gapValue.textContent = `${testGapPx} px`;
-    updateLayout();
+    queueVisualUpdate({ layout: true });
   });
   sizeSlider.addEventListener("input", () => {
     testFontSize = Number(sizeSlider.value);
     sizeValue.textContent = `${testFontSize}`;
-    updateLayout();
+    queueVisualUpdate({ layout: true });
   });
   weightSlider.addEventListener("input", () => {
     manualWeight = Number(weightSlider.value);
     weightValue.textContent = `${manualWeight}`;
-    if (manualMode) applyAxes();
+    if (manualMode) queueVisualUpdate();
   });
   manualToggle.addEventListener("change", () => {
     manualMode = manualToggle.checked;
-    if (manualMode) applyAxes();
+    queueVisualUpdate();
   });
 
   function renderCameraPreview() {
     if (video.readyState < 2) return;
+    // Avoid getImageData/putImageData on the main thread; CSS filters are cheaper.
     previewContext.drawImage(video, 0, 0, cameraPreview.width, cameraPreview.height);
-    const frame = previewContext.getImageData(0, 0, cameraPreview.width, cameraPreview.height);
-    const pixels = frame.data;
-    for (let i = 0; i < pixels.length; i += 4) {
-      const gray = 0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2];
-      const level = Math.min(4, Math.round(gray / 255 * 4));
-      const value = [0, 64, 128, 192, 255][level];
-      pixels[i] = pixels[i + 1] = pixels[i + 2] = value;
-    }
-    previewContext.putImageData(frame, 0, 0);
   }
 
   async function createHandLandmarkerWithFallback(vision) {
@@ -500,7 +528,7 @@
           currentXhetDeltas[i] += (0 - currentXhetDeltas[i]) * 0.035;
         }
       }
-      applyAxes();
+      queueVisualUpdate();
       status.textContent = "未检测到手 · 保持上次控制";
       return;
     }
@@ -583,7 +611,7 @@
       }
     }
 
-    applyAxes();
+    queueVisualUpdate();
 
     if (weightHand) {
       status.textContent = palmStableFrames >= PALM_STABLE_NEED
@@ -614,7 +642,7 @@
     currentWeights.fill(0);
     currentXhetDeltas.fill(0);
     palmStableFrames = 0;
-    applyAxes();
+    queueVisualUpdate();
     startButton.textContent = "开启摄像头";
     startButton.disabled = false;
     status.textContent = "已停止";
@@ -625,8 +653,8 @@
     else start();
   });
   window.addEventListener("beforeunload", stopCameraOnly);
-  window.addEventListener("resize", updateLayout);
-  if (window.visualViewport) window.visualViewport.addEventListener("resize", updateLayout);
+  window.addEventListener("resize", () => queueVisualUpdate({ layout: true }));
+  if (window.visualViewport) window.visualViewport.addEventListener("resize", () => queueVisualUpdate({ layout: true }));
   updateDOM();
 </script>
 </body>
