@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>ORCHESTRA VARIABLE · iPad / 移动端兼容版</title>
+  <title>ORCHESTRA VARIABLE · 自适应 UI 版</title>
   <style>
     @font-face {
       font-family: "Orchestra Variable Top";
@@ -151,12 +151,9 @@
         gap: 6px 10px;
       }
     }
+
+    #cameraPlaceholder, .preview, .controls, h1, .intro, .readout, .help { display: none !important; }
   </style>
-  <!-- 使用 TensorFlow.js WebGL 后端替代不兼容旧版 Safari 的 MediaPipe WASM -->
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4.20.0/dist/tf-core.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter@4.20.0/dist/tf-converter.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4.20.0/dist/tf-backend-webgl.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection@2.0.1/dist/hand-pose-detection.min.js"></script>
 </head>
 <body>
   <div class="stage" id="stage">
@@ -175,7 +172,12 @@
     <video id="video" playsinline muted style="display:none"></video>
   </div>
 
-<script>
+<script type="module">
+  import {
+    FilesetResolver,
+    HandLandmarker
+  } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+
   const TEXT = "ORCHESTRAVARIABLE";
   const CHAR_COUNT = TEXT.length;
   const SPLIT_INDEX = 9;
@@ -216,11 +218,10 @@
   let palmStableFrames = 0;
   const PALM_STABLE_NEED = 6;
 
-  let detector = null;
+  let landmarker = null;
   let stream = null;
   let animationId = null;
   let lastVideoTime = -1;
-  let isDetecting = false;
 
   function updateDOM() {
     const vw = window.innerWidth;
@@ -291,6 +292,32 @@
     previewContext.putImageData(frame, 0, 0);
   }
 
+  async function createHandLandmarkerWithFallback(vision) {
+    const modelUrl =
+      "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
+    try {
+      return await HandLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: modelUrl,
+          delegate: "GPU"
+        },
+        runningMode: "VIDEO",
+        numHands: 2
+      });
+    } catch (gpuError) {
+      console.warn("GPU delegate failed, falling back to CPU:", gpuError);
+      status.textContent = "GPU 初始化失败，正在切换 CPU 模式…";
+      return await HandLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: modelUrl,
+          delegate: "CPU"
+        },
+        runningMode: "VIDEO",
+        numHands: 2
+      });
+    }
+  }
+
   async function start() {
     startButton.disabled = true;
     status.textContent = "正在请求摄像头权限…";
@@ -306,18 +333,14 @@
       video.srcObject = stream;
       await video.play();
 
-      status.textContent = "摄像头已开启，正在初始化 WebGL 手势模型…";
+      status.textContent = "摄像头已开启，正在加载手势模型…";
       loop();
 
-      await tf.setBackend("webgl");
-      await tf.ready();
+      const vision = await FilesetResolver.forVisionTasks(
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+      );
 
-      const model = handPoseDetection.SupportedModels.MediaPipeHands;
-      detector = await handPoseDetection.createDetector(model, {
-        runtime: "tfjs",
-        modelType: "lite",
-        maxHands: 2
-      });
+      landmarker = await createHandLandmarkerWithFallback(vision);
 
       status.textContent = "请将一只手横向摊开";
       startButton.textContent = "终止摄像";
@@ -333,24 +356,16 @@
     }
   }
 
-  async function loop() {
+  function loop() {
     if (video.readyState >= 2 && video.currentTime !== lastVideoTime) {
       lastVideoTime = video.currentTime;
       renderCameraPreview();
-      if (detector && !isDetecting) {
-        isDetecting = true;
+      if (landmarker) {
         try {
-          const hands = await detector.estimateHands(video, { flipHorizontal: false });
-          const vw = video.videoWidth || 640;
-          const vh = video.videoHeight || 480;
-          const landmarks = hands.map(h =>
-            h.keypoints.map(kp => ({ x: kp.x / vw, y: kp.y / vh }))
-          );
-          updateFromResults({ landmarks });
+          const results = landmarker.detectForVideo(video, performance.now());
+          updateFromResults(results);
         } catch (detectError) {
           console.error("Detect frame error:", detectError);
-        } finally {
-          isDetecting = false;
         }
       }
     }
@@ -531,11 +546,10 @@
     if (animationId) cancelAnimationFrame(animationId);
     animationId = null;
     stopCameraOnly();
-    if (detector) {
-      detector.dispose();
-      detector = null;
+    if (landmarker) {
+      landmarker.close();
+      landmarker = null;
     }
-    isDetecting = false;
     currentWeights.fill(0);
     currentXhetDeltas.fill(0);
     palmStableFrames = 0;
