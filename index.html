@@ -30,7 +30,7 @@
     }
 
     #wordContainer {
-      position: absolute; left: 50%; top: 50%;
+      position: absolute; left: 50%; top: 55%;
       transform: translate(-50%, -50%);
       width: fit-content; display: flex; flex-direction: column;
       align-items: center; justify-content: center;
@@ -171,9 +171,7 @@
       }
     }
 
-    #cameraPlaceholder, .preview, .controls, h1, .intro, .readout, .help {
-      display: none !important;
-    }
+    #cameraPlaceholder, .preview, .controls, h1, .intro, .readout, .help { display: none !important; }
   </style>
 </head>
 <body>
@@ -183,7 +181,6 @@
         <span class="debug-title">参数微调</span>
         <button id="toggleDebugBtn" type="button">展开</button>
       </div>
-
       <div class="debug-body">
         <div class="slider-row">
           <div class="slider-label">
@@ -201,16 +198,14 @@
           <input id="xhetSlider" type="range" min="0" max="100" step="1" value="50">
         </div>
 
+
         <div class="slider-row">
-          <div class="slider-label">
-            <span>动画模式</span>
-          </div>
+          <div class="slider-label"><span>动画模式</span></div>
           <select id="animationMode" style="width:100%;background:#000;color:#fff;border:1px solid rgba(255,255,255,.45);padding:6px;font:inherit;">
             <option value="cycle">整体渐变升降</option>
             <option value="wave">逐字 Wave</option>
           </select>
         </div>
-
         <label class="toggle-row" for="animationToggle">
           <span>开启高度动画</span>
           <input id="animationToggle" type="checkbox">
@@ -309,11 +304,9 @@
   let lastFitScale = 1;
   let lastReadoutText = "";
 
-  // 底部 XHET 基准高度
+  // 底部 XHET 基准高度（默认 50，对应 delta = 0；顶部为 100 - 底部）
   let baseBottomXhet = 50;
   let isGestureWeightEnabled = false;
-
-  // 高度动画设置：默认关闭
   let isHeightAnimationEnabled = false;
   let heightAnimationMode = "cycle";
   let animationStartTime = 0;
@@ -348,36 +341,6 @@
     lastMeasuredSizeScale = -1;
   }
 
-  // Ease In-Out：起点和终点速度为 0
-  function easeInOut(t) {
-    return t * t * (3 - 2 * t);
-  }
-
-  // 整体模式：0 -> 100 -> 0，单次周期 6 秒
-  function getCycleHeight(elapsed) {
-    const phase = (elapsed % 6) / 6;
-    const triangle = phase < 0.5
-      ? phase * 2
-      : (1 - phase) * 2;
-
-    return easeInOut(triangle) * 100;
-  }
-
-  // Wave 模式：波峰从左向右移动
-  function getWaveHeight(elapsed, index) {
-    const speed = 0.42;
-    const phase = (elapsed * speed - index / CHAR_COUNT + 1) % 1;
-    const normalized = (Math.sin(phase * Math.PI * 2 - Math.PI / 2) + 1) / 2;
-    return normalized * 100;
-  }
-
-  function getAnimatedHeight(elapsed, index) {
-    if (heightAnimationMode === "cycle") {
-      return getCycleHeight(elapsed);
-    }
-    return getWaveHeight(elapsed, index);
-  }
-
   function updateDOM() {
     const viewW = window.innerWidth;
     const viewH = window.innerHeight;
@@ -394,33 +357,22 @@
     const minAllowedSize = Math.max(28, viewportMin * 0.065);
     const maxAllowedSize = Math.min(620, viewportMax * 0.36);
 
-    const rawBaseSize = Math.max(
-      minAllowedSize,
-      Math.min(maxAllowedSize, viewW * baseMultiplier)
-    );
+    const rawBaseSize = Math.max(minAllowedSize, Math.min(maxAllowedSize, viewW * baseMultiplier));
     const targetFontSize = rawBaseSize * activeSizeScale;
 
     const scaleDelta = Math.abs(activeSizeScale - lastMeasuredSizeScale);
-    if (viewW !== lastMeasuredViewW ||
-        scaleDelta > 0.015 ||
-        lastMeasuredSizeScale < 0) {
-
+    if (viewW !== lastMeasuredViewW || scaleDelta > 0.015 || lastMeasuredSizeScale < 0) {
       for (let i = 0; i < allSpans.length; i++) {
         allSpans[i].style.fontSize = `${targetFontSize}px`;
       }
-
       const availableWidth = viewW * (isPortrait ? 0.92 : 0.94);
       const measuredWidth = Math.max(topRow.scrollWidth, bottomRow.scrollWidth);
-      lastFitScale = measuredWidth > 0
-        ? Math.min(1, availableWidth / measuredWidth)
-        : 1;
-
+      lastFitScale = measuredWidth > 0 ? Math.min(1, availableWidth / measuredWidth) : 1;
       lastMeasuredViewW = viewW;
       lastMeasuredSizeScale = activeSizeScale;
     }
 
     const finalFontSize = Number((targetFontSize * lastFitScale).toFixed(2));
-
     if (Math.abs(finalFontSize - lastAppliedFontSize) >= 0.25) {
       for (let i = 0; i < allSpans.length; i++) {
         allSpans[i].style.fontSize = `${finalFontSize}px`;
@@ -434,31 +386,35 @@
       lastAppliedGapPx = gapPx;
     }
 
-    const elapsed = (performance.now() - animationStartTime) / 1000;
-
     for (let i = 0; i < CHAR_COUNT; i++) {
       const w = Math.round(currentWeights[i]);
       const delta = currentXhetDeltas[i];
-
-      // 动画开启时接管高度；关闭时使用手动滑块及手势控制
-      let bottomHeight = baseBottomXhet + delta;
-
+      let animatedBottom = baseBottomXhet + delta;
       if (isHeightAnimationEnabled) {
-        bottomHeight = getAnimatedHeight(elapsed, i);
+        const elapsed = (performance.now() - animationStartTime) / 1000;
+        if (heightAnimationMode === "cycle") {
+          // A faster, smoothly reversing gradient: left 0 -> right 100,
+          // then left 100 -> right 0, and repeat.
+          const phase = (elapsed % 4) / 4;
+          const directionProgress = phase < 0.5
+            ? phase * 2
+            : (1 - phase) * 2;
+          const eased = directionProgress * directionProgress * (3 - 2 * directionProgress);
+          const position = CHAR_COUNT > 1 ? i / (CHAR_COUNT - 1) : 0;
+          const ascending = position * 100;
+          const descending = (1 - position) * 100;
+          animatedBottom = ascending + (descending - ascending) * eased;
+        } else {
+          // A smooth wave travels from left to right, one letter at a time.
+          const phase = (elapsed * 0.42 - i / CHAR_COUNT + 1) % 1;
+          const normalized = (Math.sin(phase * Math.PI * 2 - Math.PI / 2) + 1) / 2;
+          animatedBottom = normalized * 100;
+        }
       }
-
-      bottomHeight = Math.round(
-        Math.min(100, Math.max(0, bottomHeight))
-      );
-
-      const topHeight = 100 - bottomHeight;
-
-      const topVarSettings =
-        `"wght" ${w}, "XHET" ${topHeight}, "wdth" 75, "opsz" 72`;
-
-      const bottomVarSettings =
-        `"wght" ${w}, "XHET" ${bottomHeight}, "wdth" 75, "opsz" 72`;
-
+      const bottomXhet = Math.round(Math.min(100, Math.max(0, animatedBottom)));
+      const topXhet = 100 - bottomXhet;
+      const topVarSettings = `"wght" ${w}, "XHET" ${topXhet}, "wdth" 75, "opsz" 72`;
+      const bottomVarSettings = `"wght" ${w}, "XHET" ${bottomXhet}, "wdth" 75, "opsz" 72`;
       const combinedKey = `${topVarSettings}|${bottomVarSettings}`;
 
       if (combinedKey !== lastAppliedVariations[i]) {
@@ -470,135 +426,88 @@
 
     const roundedW = Math.round(avgW);
     const nextReadout = `wght ${roundedW}`;
-
     if (nextReadout !== lastReadoutText) {
       weightVal.textContent = `${roundedW}`;
       weightReadout.textContent = nextReadout;
       lastReadoutText = nextReadout;
     }
-
     xhetVal.textContent = `${Math.round(baseBottomXhet)}`;
 
     if (document.activeElement !== weightSlider) {
       weightSlider.value = `${roundedW}`;
     }
-
     if (document.activeElement !== xhetSlider) {
       xhetSlider.value = `${Math.round(baseBottomXhet)}`;
     }
   }
 
-  // 展开 / 收起参数菜单
   toggleDebugBtn.addEventListener("click", () => {
     const collapsed = debugPanel.classList.toggle("collapsed");
     toggleDebugBtn.textContent = collapsed ? "展开" : "收起";
   });
 
-  // 字重滑块
   weightSlider.addEventListener("input", () => {
     const w = Number(weightSlider.value);
     currentWeights.fill(w);
     updateDOM();
   });
 
-  // 手动高度滑块
+  // 拉大底部 XHET 高度时，所有字母底部 XHET 一起升高，顶部自动为 100 - 底部
   xhetSlider.addEventListener("input", () => {
     baseBottomXhet = Number(xhetSlider.value);
     currentXhetDeltas.fill(0);
     updateDOM();
   });
 
-  // 切换动画类型
   animationMode.addEventListener("change", () => {
     heightAnimationMode = animationMode.value;
     animationStartTime = performance.now();
-
-    if (isHeightAnimationEnabled) {
-      updateDOM();
-    }
+    if (isHeightAnimationEnabled) updateDOM();
   });
 
-  // 动画开关
   animationToggle.addEventListener("change", () => {
     isHeightAnimationEnabled = animationToggle.checked;
     animationStartTime = performance.now();
-
     if (isHeightAnimationEnabled) {
-      if (!animationFrameId) {
-        animationLoop();
-      }
+      if (!animationFrameId) animationLoop();
     } else {
-      if (animationFrameId) {
-        cancelAnimationFrame(animationFrameId);
-      }
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
       animationFrameId = null;
       currentXhetDeltas.fill(0);
     }
-
     updateDOM();
   });
 
-  // 独立于摄像头运行的动画帧循环
   function animationLoop() {
-    if (!isHeightAnimationEnabled) {
-      animationFrameId = null;
-      return;
-    }
-
+    if (!isHeightAnimationEnabled) { animationFrameId = null; return; }
     updateDOM();
     animationFrameId = requestAnimationFrame(animationLoop);
   }
 
-  // 手势字重开关
   gestureWeightToggle.addEventListener("change", () => {
     isGestureWeightEnabled = gestureWeightToggle.checked;
-
     if (!isGestureWeightEnabled) {
       palmStableFrames = 0;
     }
   });
 
-  // 黑白 + 约 3 个灰阶的摄像头预览
   function renderCameraPreview() {
     if (video.readyState < 2) return;
-
-    previewContext.drawImage(
-      video,
-      0,
-      0,
-      cameraPreview.width,
-      cameraPreview.height
-    );
-
-    const frame = previewContext.getImageData(
-      0,
-      0,
-      cameraPreview.width,
-      cameraPreview.height
-    );
-
+    previewContext.drawImage(video, 0, 0, cameraPreview.width, cameraPreview.height);
+    const frame = previewContext.getImageData(0, 0, cameraPreview.width, cameraPreview.height);
     const pixels = frame.data;
-
     for (let i = 0; i < pixels.length; i += 4) {
-      const gray =
-        0.299 * pixels[i] +
-        0.587 * pixels[i + 1] +
-        0.114 * pixels[i + 2];
-
+      const gray = 0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2];
       const level = Math.min(4, Math.round(gray / 255 * 4));
       const value = [0, 64, 128, 192, 255][level];
-
       pixels[i] = pixels[i + 1] = pixels[i + 2] = value;
     }
-
     previewContext.putImageData(frame, 0, 0);
   }
 
-  // 启动摄像头
   async function start() {
     startButton.disabled = true;
     status.textContent = "正在启动…";
-
     try {
       const vision = await FilesetResolver.forVisionTasks(
         "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm"
@@ -606,8 +515,7 @@
 
       landmarker = await HandLandmarker.createFromOptions(vision, {
         baseOptions: {
-          modelAssetPath:
-            "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+          modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
           delegate: "GPU"
         },
         runningMode: "VIDEO",
@@ -615,59 +523,39 @@
       });
 
       status.textContent = "正在请求摄像头权限……";
-
       stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: "user",
-          width: { ideal: 1280 },
-          height: { ideal: 960 }
-        },
+        video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 960 } },
         audio: false
       });
-
       video.srcObject = stream;
       await video.play();
 
       status.textContent = "移动手指调整 XHET";
       startButton.textContent = "终止摄像";
       startButton.disabled = false;
-
       markLayoutDirty();
       updateDOM();
       loop();
-
     } catch (error) {
       console.error(error);
-
-      status.textContent =
-        "启动失败：" + (error.message || error) +
+      status.textContent = "启动失败：" + (error.message || error) +
         "。请检查网络、摄像头权限，并确认网页是通过 localhost 或 HTTPS 打开的。";
-
       startButton.textContent = "开启摄像头";
       startButton.disabled = false;
     }
   }
 
-  // 摄像头检测循环
   function loop() {
     if (!landmarker || video.readyState < 2) {
       animationId = requestAnimationFrame(loop);
       return;
     }
-
     if (video.currentTime !== lastVideoTime) {
       lastVideoTime = video.currentTime;
-
       renderCameraPreview();
-
-      const results = landmarker.detectForVideo(
-        video,
-        performance.now()
-      );
-
+      const results = landmarker.detectForVideo(video, performance.now());
       updateFromResults(results);
     }
-
     animationId = requestAnimationFrame(loop);
   }
 
@@ -675,83 +563,47 @@
     return Math.hypot(a.x - b.x, a.y - b.y);
   }
 
-  // 分析单只手
   function parseHand(points) {
     const wrist = points[0];
     const middleMcp = points[9];
     const middleTip = points[12];
     const indexTip = points[8];
-
-    const palmScale = Math.max(
-      distance(wrist, middleMcp),
-      0.001
-    );
+    const palmScale = Math.max(distance(wrist, middleMcp), 0.001);
 
     const tips = [4, 8, 12, 16, 20];
+    const reaches = tips.map(idx => distance(points[idx], wrist) / palmScale);
+    const openness = reaches.reduce((a, b) => a + b, 0) / reaches.length;
 
-    const reaches = tips.map(
-      idx => distance(points[idx], wrist) / palmScale
-    );
-
-    const openness =
-      reaches.reduce((a, b) => a + b, 0) / reaches.length;
-
-    const indexR = reaches[1];
-    const middleR = reaches[2];
-    const ringR = reaches[3];
-    const pinkyR = reaches[4];
-
-    const fingersCurled =
-      indexR < 1.22 &&
-      middleR < 1.22 &&
-      ringR < 1.22 &&
-      pinkyR < 1.22;
-
+    const indexR = reaches[1], middleR = reaches[2], ringR = reaches[3], pinkyR = reaches[4];
+    const fingersCurled = indexR < 1.22 && middleR < 1.22 && ringR < 1.22 && pinkyR < 1.22;
     const isFist = openness < 1.22 && fingersCurled;
 
     const axisX = middleMcp.x - wrist.x;
     const axisY = middleMcp.y - wrist.y;
     const axisLen = Math.hypot(axisX, axisY) || 0.001;
-
     const verticalRatio = Math.abs(axisY) / axisLen;
     const isNearlyHorizontal = verticalRatio < 0.32;
     const isOpenPalm = openness > 1.68;
 
     const ringTip = points[16];
-
     const tipYSpread = Math.max(
       Math.abs(indexTip.y - middleTip.y),
       Math.abs(ringTip.y - middleTip.y),
       Math.abs(indexTip.y - ringTip.y)
     );
-
     const fingersAligned = tipYSpread < 0.07;
+    const isHorizontalPalm = isNearlyHorizontal && isOpenPalm && fingersAligned;
 
-    const isHorizontalPalm =
-      isNearlyHorizontal &&
-      isOpenPalm &&
-      fingersAligned;
-
-    const mirroredX = Math.max(
-      0,
-      Math.min(1, 1 - indexTip.x)
-    );
-
+    const mirroredX = Math.max(0, Math.min(1, 1 - indexTip.x));
     const letterPos = mirroredX * (CHAR_COUNT - 1);
 
-    const normalizedHeight = Math.max(
-      0,
-      Math.min(1, (0.85 - indexTip.y) / 0.7)
-    );
-
+    const normalizedHeight = Math.max(0, Math.min(1, (0.85 - indexTip.y) / 0.7));
     const xhetDelta = (normalizedHeight - 0.5) * 150;
     const weightFromY = Math.round(normalizedHeight * 900);
 
     const xs = points.map(p => p.x);
     const ys = points.map(p => p.y);
-
-    const apparentArea =
-      (Math.max(...xs) - Math.min(...xs)) *
+    const apparentArea = (Math.max(...xs) - Math.min(...xs)) *
       (Math.max(...ys) - Math.min(...ys));
 
     return {
@@ -766,7 +618,6 @@
     };
   }
 
-  // 手部位置平滑
   function smoothHandSlot(slot, rawHand) {
     if (!rawHand) {
       slot.active = false;
@@ -775,31 +626,18 @@
     }
 
     const alpha = 0.45;
-
     if (!slot.active || slot.x === null || slot.y === null) {
       slot.x = rawHand.mirroredX;
       slot.y = rawHand.tipY;
     } else {
-      slot.x =
-        slot.x + (rawHand.mirroredX - slot.x) * alpha;
-
-      slot.y =
-        slot.y + (rawHand.tipY - slot.y) * alpha;
+      slot.x = slot.x + (rawHand.mirroredX - slot.x) * alpha;
+      slot.y = slot.y + (rawHand.tipY - slot.y) * alpha;
     }
-
     slot.active = true;
-
-    slot.horizontalFrames = rawHand.isHorizontalPalm
-      ? slot.horizontalFrames + 1
-      : 0;
+    slot.horizontalFrames = rawHand.isHorizontalPalm ? slot.horizontalFrames + 1 : 0;
 
     const letterPos = slot.x * (CHAR_COUNT - 1);
-
-    const normalizedHeight = Math.max(
-      0,
-      Math.min(1, (0.85 - slot.y) / 0.7)
-    );
-
+    const normalizedHeight = Math.max(0, Math.min(1, (0.85 - slot.y) / 0.7));
     const xhetDelta = (normalizedHeight - 0.5) * 150;
     const weightFromY = Math.round(normalizedHeight * 900);
 
@@ -809,44 +647,32 @@
       letterPos,
       xhetDelta,
       weightFromY,
-      confirmedHorizontalPalm:
-        rawHand.isHorizontalPalm &&
-        slot.horizontalFrames >= 2
+      confirmedHorizontalPalm: rawHand.isHorizontalPalm && slot.horizontalFrames >= 2
     };
   }
 
-  // 计算单只手对整行字符产生的 XHET 影响
+  // 计算单只手在整行字符上产生的 XHET 影响量
   function computeSingleHandContribution(hand) {
     const out = new Array(CHAR_COUNT).fill(0);
-
     if (!hand) return out;
-
     const spread = 2.2;
-
     for (let i = 0; i < CHAR_COUNT; i++) {
       const dist = Math.abs(i - hand.letterPos);
-      const factor = Math.exp(
-        -(dist * dist) / (2 * spread * spread)
-      );
-
+      const factor = Math.exp(-(dist * dist) / (2 * spread * spread));
       out[i] = hand.xhetDelta * factor;
     }
-
     return out;
   }
 
-  // 根据手势更新字形
   function updateFromResults(results) {
     const rawHands = results.landmarks || [];
 
     if (rawHands.length === 0) {
       palmStableFrames = 0;
-
       smoothedHands[0].active = false;
       smoothedHands[0].horizontalFrames = 0;
       smoothedHands[1].active = false;
       smoothedHands[1].horizontalFrames = 0;
-
       updateDOM();
       status.textContent = "未检测到手 · 字重保持";
       return;
@@ -859,41 +685,27 @@
       .sort((a, b) => a.mirroredX - b.mirroredX);
 
     const activeHands = [];
-
     if (parsed.length >= 2) {
       const l = smoothHandSlot(smoothedHands[0], parsed[0]);
       const r = smoothHandSlot(smoothedHands[1], parsed[parsed.length - 1]);
-
       if (l) activeHands.push(l);
       if (r) activeHands.push(r);
-
     } else {
       const h = parsed[0];
       const useLeftSlot = h.mirroredX < 0.5;
-
       if (useLeftSlot) {
         smoothHandSlot(smoothedHands[1], null);
-
         const l = smoothHandSlot(smoothedHands[0], h);
         if (l) activeHands.push(l);
-
       } else {
         smoothHandSlot(smoothedHands[0], null);
-
         const r = smoothHandSlot(smoothedHands[1], h);
         if (r) activeHands.push(r);
       }
     }
 
-    const leftHand =
-      activeHands.find(h => h.mirroredX < 0.5) ||
-      (activeHands.length >= 2 ? activeHands[0] : null);
-
-    const rightHand =
-      activeHands.find(h => h.mirroredX >= 0.5) ||
-      (activeHands.length >= 2
-        ? activeHands[activeHands.length - 1]
-        : null);
+    const leftHand = activeHands.find(h => h.mirroredX < 0.5) || (activeHands.length >= 2 ? activeHands[0] : null);
+    const rightHand = activeHands.find(h => h.mirroredX >= 0.5) || (activeHands.length >= 2 ? activeHands[activeHands.length - 1] : null);
 
     const freezeLeft = leftHand ? leftHand.isFist : false;
     const freezeRight = rightHand ? rightHand.isFist : false;
@@ -917,51 +729,32 @@
 
       if (activeHands.length === 1) {
         const single = computeSingleHandContribution(activeHands[0]);
-
         for (let i = 0; i < CHAR_COUNT; i++) {
           targetDeltas[i] = single[i];
         }
-
       } else {
         const lH = activeHands[0];
         const rH = activeHands[activeHands.length - 1];
+        const span = Math.max(rH.letterPos - lH.letterPos, 0.001);
 
-        const span = Math.max(
-          rH.letterPos - lH.letterPos,
-          0.001
-        );
-
-        const leftContrib =
-          computeSingleHandContribution(lH);
-
-        const rightContrib =
-          computeSingleHandContribution(rH);
+        // 只有左右手都未握拳时才做双点平滑过渡；若某侧握拳，该侧完全冻结，另一侧按自身贡献独立变化
+        const leftContrib = computeSingleHandContribution(lH);
+        const rightContrib = computeSingleHandContribution(rH);
 
         for (let i = 0; i < CHAR_COUNT; i++) {
           if (!freezeLeft && !freezeRight) {
             if (i <= lH.letterPos) {
               const dist = lH.letterPos - i;
-
-              targetDeltas[i] =
-                lH.xhetDelta * Math.exp(-(dist * dist) / 4);
-
+              targetDeltas[i] = lH.xhetDelta * Math.exp(-(dist * dist) / 4);
             } else if (i >= rH.letterPos) {
               const dist = i - rH.letterPos;
-
-              targetDeltas[i] =
-                rH.xhetDelta * Math.exp(-(dist * dist) / 4);
-
+              targetDeltas[i] = rH.xhetDelta * Math.exp(-(dist * dist) / 4);
             } else {
               const t = (i - lH.letterPos) / span;
-
-              targetDeltas[i] =
-                lH.xhetDelta +
-                t * (rH.xhetDelta - lH.xhetDelta);
+              targetDeltas[i] = lH.xhetDelta + t * (rH.xhetDelta - lH.xhetDelta);
             }
-
           } else {
-            targetDeltas[i] =
-              leftContrib[i] + rightContrib[i];
+            targetDeltas[i] = leftContrib[i] + rightContrib[i];
           }
         }
       }
@@ -969,39 +762,27 @@
       for (let i = 0; i < CHAR_COUNT; i++) {
         const isLeftSide = i < SPLIT_INDEX;
         const isFrozen = isLeftSide ? freezeLeft : freezeRight;
-
         if (isFrozen) continue;
-
-        const diff =
-          targetDeltas[i] - currentXhetDeltas[i];
-
+        const diff = targetDeltas[i] - currentXhetDeltas[i];
         if (Math.abs(diff) > 0.35) {
           currentXhetDeltas[i] += diff * 0.25;
         }
       }
     }
 
-    // 手势调整字重
-    if (
-      isGestureWeightEnabled &&
-      weightHand &&
-      palmStableFrames >= PALM_STABLE_NEED
-    ) {
+    if (isGestureWeightEnabled && weightHand && palmStableFrames >= PALM_STABLE_NEED) {
       const targetW = weightHand.weightFromY;
-
       for (let i = 0; i < CHAR_COUNT; i++) {
-        currentWeights[i] +=
-          (targetW - currentWeights[i]) * 0.12;
+        currentWeights[i] += (targetW - currentWeights[i]) * 0.12;
       }
     }
 
     updateDOM();
 
     if (weightHand) {
-      status.textContent =
-        palmStableFrames >= PALM_STABLE_NEED
-          ? "调整字重中 · XHET 已锁定"
-          : "摊开手掌以调整字重";
+      status.textContent = palmStableFrames >= PALM_STABLE_NEED
+        ? "调整字重中 · XHET 已锁定"
+        : "摊开手掌以调整字重";
     } else {
       status.textContent = isGestureWeightEnabled
         ? "请将一只手横向摊开"
@@ -1009,72 +790,47 @@
     }
   }
 
-  // 停止摄像头
   function stopCameraOnly() {
     if (stream) {
       stream.getTracks().forEach(track => track.stop());
       stream = null;
     }
-
     video.srcObject = null;
-
-    previewContext.clearRect(
-      0,
-      0,
-      cameraPreview.width,
-      cameraPreview.height
-    );
+    previewContext.clearRect(0, 0, cameraPreview.width, cameraPreview.height);
   }
 
-  // 停止摄像头并重置字重
   function stop() {
-    if (animationId) {
-      cancelAnimationFrame(animationId);
-    }
-
+    if (animationId) cancelAnimationFrame(animationId);
     animationId = null;
-
     stopCameraOnly();
-
     if (landmarker) {
       landmarker.close();
       landmarker = null;
     }
-
     currentWeights.fill(0);
     currentXhetDeltas.fill(0);
     lastAppliedVariations.fill("");
     palmStableFrames = 0;
-
     markLayoutDirty();
     updateDOM();
-
     startButton.textContent = "开启摄像头";
     startButton.disabled = false;
     status.textContent = "已停止";
   }
 
   startButton.addEventListener("click", () => {
-    if (stream) {
-      stop();
-    } else {
-      start();
-    }
+    if (stream) stop();
+    else start();
   });
-
   window.addEventListener("beforeunload", stopCameraOnly);
-
   window.addEventListener("resize", () => {
     markLayoutDirty();
     updateDOM();
   });
-
   window.visualViewport?.addEventListener("resize", () => {
     markLayoutDirty();
     updateDOM();
   });
-
-  // 初始状态：动画关闭
   updateDOM();
 </script>
 </body>
