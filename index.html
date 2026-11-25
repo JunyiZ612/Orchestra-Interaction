@@ -411,8 +411,10 @@
           animatedBottom = normalized * 100;
         }
       }
-      const bottomXhet = Math.round(Math.min(100, Math.max(0, animatedBottom)));
-      const topXhet = 100 - bottomXhet;
+      // Keep fractional axis values so the animation does not jump between integers.
+      // Two decimal places are enough for smooth interpolation without noisy strings.
+      const bottomXhet = Number(Math.min(100, Math.max(0, animatedBottom)).toFixed(2));
+      const topXhet = Number((100 - bottomXhet).toFixed(2));
       const topVarSettings = `"wght" ${w}, "XHET" ${topXhet}, "wdth" 75, "opsz" 72`;
       const bottomVarSettings = `"wght" ${w}, "XHET" ${bottomXhet}, "wdth" 75, "opsz" 72`;
       const combinedKey = `${topVarSettings}|${bottomVarSettings}`;
