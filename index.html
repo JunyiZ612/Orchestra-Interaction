@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>ORCHESTRA VARIABLE · 字重/字号/间距标定版</title>
+  <title>ORCHESTRA VARIABLE · 线性联动标定版</title>
   <style>
     @font-face {
       font-family: "Orchestra Variable Top";
@@ -72,7 +72,7 @@
       top: max(14px, env(safe-area-inset-top));
       left: max(14px, env(safe-area-inset-left));
       z-index: 30;
-      width: min(290px, 62vw);
+      width: min(300px, 64vw);
       padding: 10px 12px;
       border: 1px solid rgba(245, 241, 232, 0.35);
       background: rgba(0, 0, 0, 0.78);
@@ -121,6 +121,14 @@
     .preset-btn:active {
       background: #f5f1e8;
       color: #000;
+    }
+    .xhet-info {
+      font-size: 11px;
+      color: rgba(245, 241, 232, 0.68);
+      border-top: 1px solid rgba(245, 241, 232, 0.16);
+      padding-top: 6px;
+      display: flex;
+      justify-content: space-between;
     }
 
     #footer {
@@ -217,17 +225,22 @@
       <div class="slider-group">
         <div class="slider-label">
           <span>字号 (font-size)</span>
-          <span id="sizeVal">110 px</span>
+          <span id="sizeVal">360 px</span>
         </div>
-        <input id="sizeSlider" type="range" min="24" max="360" step="1" value="110">
+        <input id="sizeSlider" type="range" min="24" max="420" step="1" value="360">
       </div>
 
       <div class="slider-group">
         <div class="slider-label">
           <span>行间距 (gap)</span>
-          <span id="gapVal">6 px</span>
+          <span id="gapVal">0 px</span>
         </div>
-        <input id="gapSlider" type="range" min="-80" max="120" step="1" value="6">
+        <input id="gapSlider" type="range" min="0" max="140" step="1" value="0">
+      </div>
+
+      <div class="xhet-info">
+        <span>XHET 基准 / 总和</span>
+        <span id="xhetBaseVal">50 + 50 = 100</span>
       </div>
     </div>
 
@@ -259,6 +272,16 @@
   const CHAR_COUNT = TEXT.length;
   const SPLIT_INDEX = 9;
 
+  // 标定锚点：最细 (wght=0) -> 360px / gap 0px；最粗 (wght=900) -> 140px / gap 55px
+  const MIN_FONT_SIZE = 360;
+  const MAX_FONT_SIZE = 140;
+  const MIN_GAP_PX = 0;
+  const MAX_GAP_PX = 55;
+
+  // XHET 基准：最细 50 + 50 = 100；最粗 75 + 75 = 150
+  const MIN_BASE_XHET = 50;
+  const MAX_BASE_XHET = 75;
+
   const video = document.querySelector("#video");
   const cameraPreview = document.querySelector("#cameraPreview");
   const previewContext = cameraPreview.getContext("2d", { willReadFrequently: true });
@@ -276,6 +299,7 @@
   const wghtVal = document.querySelector("#wghtVal");
   const sizeVal = document.querySelector("#sizeVal");
   const gapVal = document.querySelector("#gapVal");
+  const xhetBaseVal = document.querySelector("#xhetBaseVal");
   const btnMinWght = document.querySelector("#btnMinWght");
   const btnMaxWght = document.querySelector("#btnMaxWght");
 
@@ -298,10 +322,6 @@
     bottomSpans.push(bSpan);
   }
 
-  // 根据当前屏幕宽度给滑块一个合理的初始字号
-  const initialSize = Math.max(36, Math.min(240, Math.round((window.innerWidth * 0.9) / 9.2)));
-  sizeSlider.value = String(initialSize);
-
   const currentWeights = new Array(CHAR_COUNT).fill(0);
   const currentXhetDeltas = new Array(CHAR_COUNT).fill(0);
 
@@ -313,25 +333,44 @@
   let animationId = null;
   let lastVideoTime = -1;
 
+  // 根据字重线性计算对应的字号和间距，并同步到滑块
+  function syncLinearMetricsFromWeight(wght) {
+    const t = Math.max(0, Math.min(1, wght / 900));
+    const linearSize = Math.round(MIN_FONT_SIZE + (MAX_FONT_SIZE - MIN_FONT_SIZE) * t);
+    const linearGap = Math.round(MIN_GAP_PX + (MAX_GAP_PX - MIN_GAP_PX) * t);
+    sizeSlider.value = String(linearSize);
+    gapSlider.value = String(linearGap);
+  }
+
   function updateDOM() {
     const fontSize = Number(sizeSlider.value);
     const gapPx = Number(gapSlider.value);
     const avgW = currentWeights.reduce((a, b) => a + b, 0) / CHAR_COUNT;
+    const t = Math.max(0, Math.min(1, avgW / 900));
 
-    // 同步滑块读数显示
+    // 当前字重下的 XHET 基准中点（50 -> 75）与上下总和（100 -> 150）
+    const baseXhet = MIN_BASE_XHET + (MAX_BASE_XHET - MIN_BASE_XHET) * t;
+    const totalXhet = baseXhet * 2;
+
+    // 同步滑块和状态显示
     wghtSlider.value = String(Math.round(avgW));
     wghtVal.textContent = String(Math.round(avgW));
     sizeVal.textContent = `${fontSize} px`;
     gapVal.textContent = `${gapPx} px`;
+    xhetBaseVal.textContent = `${Math.round(baseXhet)} + ${Math.round(baseXhet)} = ${Math.round(totalXhet)}`;
 
-    // 直接应用滑块的字号与间距，无缓动、无自动覆盖
+    // 直接应用当前间距与字号（无缓动）
     wordContainer.style.gap = `${gapPx}px`;
 
     for (let i = 0; i < CHAR_COUNT; i++) {
       const w = Math.round(currentWeights[i]);
+      const charT = Math.max(0, Math.min(1, w / 900));
+      const charBaseXhet = MIN_BASE_XHET + (MAX_BASE_XHET - MIN_BASE_XHET) * charT;
+      const charTotalXhet = charBaseXhet * 2;
+
       const delta = currentXhetDeltas[i];
-      const bottomXhet = Math.min(100, Math.max(0, 50 + delta));
-      const topXhet = 100 - bottomXhet;
+      const bottomXhet = Math.min(charTotalXhet, Math.max(0, charBaseXhet + delta));
+      const topXhet = charTotalXhet - bottomXhet;
 
       topSpans[i].style.fontSize = `${fontSize}px`;
       bottomSpans[i].style.fontSize = `${fontSize}px`;
@@ -344,23 +383,27 @@
     weightReadout.textContent = `wght ${Math.round(avgW)}`;
   }
 
-  // 滑块事件：立即生效
+  // 拖动字重滑块时，字号和间距按 360/0 -> 140/55 匀速线性联动
   wghtSlider.addEventListener("input", () => {
     const w = Number(wghtSlider.value);
     currentWeights.fill(w);
+    syncLinearMetricsFromWeight(w);
     updateDOM();
   });
 
+  // 单独微调字号或间距滑块
   sizeSlider.addEventListener("input", updateDOM);
   gapSlider.addEventListener("input", updateDOM);
 
   btnMinWght.addEventListener("click", () => {
     currentWeights.fill(0);
+    syncLinearMetricsFromWeight(0);
     updateDOM();
   });
 
   btnMaxWght.addEventListener("click", () => {
     currentWeights.fill(900);
+    syncLinearMetricsFromWeight(900);
     updateDOM();
   });
 
@@ -474,6 +517,7 @@
     const letterPos = mirroredX * (CHAR_COUNT - 1);
 
     const normalizedHeight = Math.max(0, Math.min(1, (0.85 - indexTip.y) / 0.7));
+    // 偏移幅度随当前 XHET 基准同步（最细 ±75，最粗 ±112.5）
     const xhetDelta = (normalizedHeight - 0.5) * 150;
     const weightFromY = Math.round(normalizedHeight * 900);
 
@@ -578,10 +622,11 @@
       }
     }
 
-    // 去掉加粗缓动：直接同步目标字重
+    // 去掉加粗缓动：直接同步目标字重、字号与行间距
     if (weightHand && palmStableFrames >= PALM_STABLE_NEED) {
       const targetW = weightHand.weightFromY;
       currentWeights.fill(targetW);
+      syncLinearMetricsFromWeight(targetW);
     }
 
     updateDOM();
@@ -615,6 +660,7 @@
     currentWeights.fill(0);
     currentXhetDeltas.fill(0);
     palmStableFrames = 0;
+    syncLinearMetricsFromWeight(0);
     updateDOM();
     startButton.textContent = "开启摄像头";
     startButton.disabled = false;
@@ -626,6 +672,8 @@
     else start();
   });
   window.addEventListener("beforeunload", stopCameraOnly);
+
+  syncLinearMetricsFromWeight(0);
   updateDOM();
 </script>
 </body>
