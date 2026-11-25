@@ -30,7 +30,6 @@
       transform: translate(-50%, -50%);
       width: fit-content; display: flex; flex-direction: column;
       align-items: center; justify-content: center;
-      /* 改用安全的微小正向间距，保证初始状态绝对不重叠 */
       gap: 0.05em; 
       user-select: none; pointer-events: none;
       transition: gap 0.15s ease;
@@ -38,7 +37,6 @@
     #topRow, #bottomRow {
       display: flex; justify-content: center; white-space: nowrap;
       letter-spacing: 0.02em; 
-      /* 恢复标准的 1，让浏览器按照正常的字体设计框渲染，绝不互相压盖 */
       line-height: 1; 
     }
     .top-char, .bottom-char {
@@ -48,19 +46,24 @@
     .top-char { font-family: "Orchestra Variable Top", serif; }
     .bottom-char { font-family: "Orchestra Variable Bottom", serif; }
     #footer {
-      position: absolute; left: 0; right: 0; bottom: max(16px, env(safe-area-inset-bottom));
-      display: flex; align-items: center; justify-content: center; gap: 14px;
-      color: rgba(245,241,232,.58); font-size: 11px; letter-spacing: .08em;
+      position: absolute; left: 12px; right: 12px; bottom: max(16px, env(safe-area-inset-bottom));
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px;
+      color: rgba(245,241,232,.75); font-size: 12px; letter-spacing: .06em;
       font-variant-numeric: tabular-nums;
+      text-align: center;
     }
     #startButton {
       appearance: none; border: 1px solid rgba(245,241,232,.55);
-      padding: 7px 12px; background: #000;
+      padding: 8px 14px; background: #000;
       color: #f5f1e8; font: inherit; letter-spacing: inherit;
       cursor: pointer;
     }
     #startButton:disabled { opacity: .45; cursor: wait; }
-    #status { display: none; }
+    #status {
+      display: inline-block;
+      max-width: 90vw;
+      color: #f5f1e8;
+    }
     #cameraFrame {
       position: absolute; top: 18px; right: 18px;
       width: min(220px, 28vw); aspect-ratio: 4 / 3;
@@ -111,7 +114,6 @@
   const topRow = document.querySelector("#topRow");
   const bottomRow = document.querySelector("#bottomRow");
   const wordContainer = document.querySelector("#wordContainer");
-  const stage = document.querySelector("#stage");
   const status = document.querySelector("#status");
   const weightReadout = document.querySelector("#weightReadout");
   const startButton = document.querySelector("#startButton");
@@ -174,7 +176,6 @@
       span.style.fontSize = `${finalFontSize}px`;
     }
 
-    // 安全的间距计算：以 0.05em 为基础，随字重轻微增加一点点
     const baseGapEm = 0.05;
     const weightGapAdd = (avgW / 900) * 0.1;
     const gapEm = baseGapEm + weightGapAdd;
@@ -210,8 +211,22 @@
 
   async function start() {
     startButton.disabled = true;
-    status.textContent = "正在启动…";
+    status.textContent = "正在请求摄像头权限…";
     try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("当前浏览器环境不支持调用摄像头，请用 Safari 或 Chrome 打开");
+      }
+
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 960 } },
+        audio: false
+      });
+      video.srcObject = stream;
+      await video.play();
+
+      status.textContent = "摄像头已开启，正在加载手势模型…";
+      loop();
+
       const vision = await FilesetResolver.forVisionTasks(
         "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm"
       );
@@ -225,38 +240,27 @@
         numHands: 4
       });
 
-      status.textContent = "正在请求摄像头权限……";
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 960 } },
-        audio: false
-      });
-      video.srcObject = stream;
-      await video.play();
-
       status.textContent = "请将一只手横向摊开";
       startButton.textContent = "终止摄像";
       startButton.disabled = false;
       updateDOM();
-      loop();
     } catch (error) {
       console.error(error);
-      status.textContent = "启动失败：" + (error.message || error) +
-        "。请检查网络、摄像头权限，并确认网页是通过 localhost 或 HTTPS 打开的。";
+      stopCameraOnly();
+      status.textContent = "启动失败：" + (error.message || error);
       startButton.textContent = "开启摄像头";
       startButton.disabled = false;
     }
   }
 
   function loop() {
-    if (!landmarker || video.readyState < 2) {
-      animationId = requestAnimationFrame(loop);
-      return;
-    }
-    if (video.currentTime !== lastVideoTime) {
+    if (video.readyState >= 2 && video.currentTime !== lastVideoTime) {
       lastVideoTime = video.currentTime;
       renderCameraPreview();
-      const results = landmarker.detectForVideo(video, performance.now());
-      updateFromResults(results);
+      if (landmarker) {
+        const results = landmarker.detectForVideo(video, performance.now());
+        updateFromResults(results);
+      }
     }
     animationId = requestAnimationFrame(loop);
   }
