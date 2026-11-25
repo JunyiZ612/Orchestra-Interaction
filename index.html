@@ -65,7 +65,7 @@
       font-size: 120px;
       color: #f5f1e8;
       display: inline-block;
-      will-change: font-variation-settings;
+      /* Avoid forcing a separate compositing layer for every glyph on iPad. */
     }
     .top-char { font-family: "Orchestra Variable Top", serif; }
     .bottom-char { font-family: "Orchestra Variable Bottom", serif; }
@@ -152,6 +152,31 @@
       }
     }
 
+    #testPanel {
+      position: fixed;
+      left: 12px;
+      top: max(12px, env(safe-area-inset-top));
+      z-index: 30;
+      width: min(300px, 46vw);
+      padding: 12px 14px;
+      background: rgba(0,0,0,.82);
+      border: 1px solid rgba(245,241,232,.35);
+      color: #f5f1e8;
+      font-size: 12px;
+      letter-spacing: .04em;
+      touch-action: pan-y;
+    }
+    #testPanel h2 { margin: 0 0 10px; font-size: 12px; font-weight: 500; }
+    .sliderRow { display: grid; grid-template-columns: 58px 1fr 44px; gap: 8px; align-items: center; margin: 9px 0; }
+    .sliderRow input { width: 100%; min-width: 0; accent-color: #f5f1e8; }
+    .sliderValue { text-align: right; font-variant-numeric: tabular-nums; }
+    #manualMode { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+    #manualMode input { accent-color: #f5f1e8; }
+    #testHint { opacity: .65; line-height: 1.35; margin-top: 7px; }
+    @media (max-width: 700px) {
+      #testPanel { width: min(270px, 52vw); padding: 9px 10px; }
+      .sliderRow { grid-template-columns: 48px 1fr 38px; gap: 5px; }
+    }
     #cameraPlaceholder, .preview, .controls, h1, .intro, .readout, .help { display: none !important; }
   </style>
 </head>
@@ -161,6 +186,14 @@
       <div id="topRow"></div>
       <div id="bottomRow"></div>
     </div>
+    <section id="testPanel" aria-label="临时测试调节">
+      <h2>TEST CONTROLS</h2>
+      <div class="sliderRow"><label for="gapSlider">Gap</label><input id="gapSlider" type="range" min="-160" max="100" step="1" value="5"><span class="sliderValue" id="gapValue">5 px</span></div>
+      <div class="sliderRow"><label for="sizeSlider">Size</label><input id="sizeSlider" type="range" min="40" max="520" step="1" value="220"><span class="sliderValue" id="sizeValue">220</span></div>
+      <div class="sliderRow"><label for="weightSlider">Weight</label><input id="weightSlider" type="range" min="0" max="900" step="1" value="0"><span class="sliderValue" id="weightValue">0</span></div>
+      <label id="manualMode"><input id="manualToggle" type="checkbox"> Manual weight (ignore camera)</label>
+      <div id="testHint">临时测试：滑动记录最细/最粗时合适的字号和行距。</div>
+    </section>
     <div id="cameraFrame" aria-label="摄像头画面">
       <canvas id="cameraPreview" width="320" height="240"></canvas>
     </div>
@@ -223,60 +256,78 @@
   let animationId = null;
   let lastVideoTime = -1;
 
-  function updateDOM() {
+  const gapSlider = document.querySelector("#gapSlider");
+  const sizeSlider = document.querySelector("#sizeSlider");
+  const weightSlider = document.querySelector("#weightSlider");
+  const manualToggle = document.querySelector("#manualToggle");
+  const gapValue = document.querySelector("#gapValue");
+  const sizeValue = document.querySelector("#sizeValue");
+  const weightValue = document.querySelector("#weightValue");
+  const testPanel = document.querySelector("#testPanel");
+
+  let testGapPx = Number(gapSlider.value);
+  let testFontSize = Number(sizeSlider.value);
+  let manualWeight = Number(weightSlider.value);
+  let manualMode = false;
+  let lastPreviewTime = 0;
+  let lastDetectionTime = 0;
+  const DETECTION_INTERVAL = 65; // about 15 fps on iPad
+  const PREVIEW_INTERVAL = 120; // about 8 fps; preview is decorative
+  let xhetMissFrames = 0;
+  const XHET_HOLD_FRAMES = 8;
+
+  function updateLayout() {
     const vw = window.innerWidth;
     const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-    const footerRect = footer ? footer.getBoundingClientRect() : { height: 70, top: vh - 90 };
+    const panelRect = testPanel.getBoundingClientRect();
+    const footerRect = footer.getBoundingClientRect();
+    const topReserved = Math.max(24, panelRect.bottom + 16);
     const bottomReserved = Math.max(80, vh - footerRect.top + 12);
-    const topSafe = Math.max(24, vh * 0.06);
-    const usableHeight = Math.max(80, vh - bottomReserved - topSafe);
+    const usableHeight = Math.max(100, vh - topReserved - bottomReserved);
     const usableWidth = Math.max(120, vw * 0.94);
-
-    const avgW = currentWeights.reduce((a, b) => a + b, 0) / CHAR_COUNT;
-    const weightScale = 1 - (avgW / 900) * 0.15;
-
-    const baseGapEm = 0.05;
-    const weightGapAdd = (avgW / 900) * 0.08;
-    const gapEm = baseGapEm + weightGapAdd;
-
-    const heightBasedSize = (usableHeight / (2 + gapEm)) * 0.92;
-    const widthBasedSize = usableWidth / 9.2;
-
-    let targetFontSize = Math.max(20, Math.min(heightBasedSize, widthBasedSize, 520)) * weightScale;
-
-    for (const span of [...topSpans, ...bottomSpans]) {
-      span.style.fontSize = `${targetFontSize}px`;
-    }
-    wordContainer.style.gap = `${gapEm * targetFontSize}px`;
-
-    const measuredWidth = Math.max(topRow.scrollWidth, bottomRow.scrollWidth);
-    const measuredHeight = wordContainer.getBoundingClientRect().height;
-
-    const widthScale = measuredWidth > 0 ? Math.min(1, usableWidth / measuredWidth) : 1;
-    const heightScale = measuredHeight > 0 ? Math.min(1, usableHeight / measuredHeight) : 1;
-    const finalFontSize = Math.max(16, targetFontSize * Math.min(widthScale, heightScale));
-
-    for (const span of [...topSpans, ...bottomSpans]) {
-      span.style.fontSize = `${finalFontSize}px`;
-    }
-    wordContainer.style.gap = `${gapEm * finalFontSize}px`;
-
-    const centerY = topSafe + usableHeight / 2;
-    wordContainer.style.top = `${centerY}px`;
+    const fontSize = Math.min(testFontSize, usableHeight * 0.48, usableWidth / 9.2);
+    for (const span of [...topSpans, ...bottomSpans]) span.style.fontSize = `${fontSize}px`;
+    wordContainer.style.gap = `${testGapPx}px`;
+    wordContainer.style.top = `${topReserved + usableHeight / 2}px`;
     wordContainer.style.transform = "translate(-50%, -50%)";
-
-    for (let i = 0; i < CHAR_COUNT; i++) {
-      const w = Math.round(currentWeights[i]);
-      const delta = currentXhetDeltas[i];
-      const bottomXhet = Math.min(100, Math.max(0, 50 + delta));
-      const topXhet = 100 - bottomXhet;
-      topSpans[i].style.fontVariationSettings =
-        `"wght" ${w}, "XHET" ${Math.round(topXhet)}, "wdth" 75, "opsz" 72`;
-      bottomSpans[i].style.fontVariationSettings =
-        `"wght" ${w}, "XHET" ${Math.round(bottomXhet)}, "wdth" 75, "opsz" 72`;
-    }
-    weightReadout.textContent = `wght ${Math.round(avgW)}`;
   }
+
+  function applyAxes() {
+    for (let i = 0; i < CHAR_COUNT; i++) {
+      const w = Math.round(manualMode ? manualWeight : currentWeights[i]);
+      const bottomXhet = Math.round(Math.max(0, Math.min(100, 50 + currentXhetDeltas[i])));
+      const topXhet = 100 - bottomXhet;
+      topSpans[i].style.fontVariationSettings = `"wght" ${w}, "XHET" ${topXhet}, "wdth" 75, "opsz" 72`;
+      bottomSpans[i].style.fontVariationSettings = `"wght" ${w}, "XHET" ${bottomXhet}, "wdth" 75, "opsz" 72`;
+    }
+    const average = manualMode ? manualWeight : currentWeights.reduce((a,b) => a+b, 0) / CHAR_COUNT;
+    weightReadout.textContent = `wght ${Math.round(average)}`;
+  }
+
+  function updateDOM() {
+    updateLayout();
+    applyAxes();
+  }
+
+  gapSlider.addEventListener("input", () => {
+    testGapPx = Number(gapSlider.value);
+    gapValue.textContent = `${testGapPx} px`;
+    updateLayout();
+  });
+  sizeSlider.addEventListener("input", () => {
+    testFontSize = Number(sizeSlider.value);
+    sizeValue.textContent = `${testFontSize}`;
+    updateLayout();
+  });
+  weightSlider.addEventListener("input", () => {
+    manualWeight = Number(weightSlider.value);
+    weightValue.textContent = `${manualWeight}`;
+    if (manualMode) applyAxes();
+  });
+  manualToggle.addEventListener("change", () => {
+    manualMode = manualToggle.checked;
+    if (manualMode) applyAxes();
+  });
 
   function renderCameraPreview() {
     if (video.readyState < 2) return;
@@ -359,10 +410,15 @@
   function loop() {
     if (video.readyState >= 2 && video.currentTime !== lastVideoTime) {
       lastVideoTime = video.currentTime;
-      renderCameraPreview();
-      if (landmarker) {
+      const now = performance.now();
+      if (now - lastPreviewTime >= PREVIEW_INTERVAL) {
+        renderCameraPreview();
+        lastPreviewTime = now;
+      }
+      if (landmarker && !manualMode && now - lastDetectionTime >= DETECTION_INTERVAL) {
+        lastDetectionTime = now;
         try {
-          const results = landmarker.detectForVideo(video, performance.now());
+          const results = landmarker.detectForVideo(video, now);
           updateFromResults(results);
         } catch (detectError) {
           console.error("Detect frame error:", detectError);
@@ -437,13 +493,18 @@
 
     if (rawHands.length === 0) {
       palmStableFrames = 0;
-      for (let i = 0; i < CHAR_COUNT; i++) {
-        currentXhetDeltas[i] += (0 - currentXhetDeltas[i]) * 0.2;
+      xhetMissFrames++;
+      // Hold the last XHET briefly through intermittent landmark loss.
+      if (xhetMissFrames > XHET_HOLD_FRAMES) {
+        for (let i = 0; i < CHAR_COUNT; i++) {
+          currentXhetDeltas[i] += (0 - currentXhetDeltas[i]) * 0.035;
+        }
       }
-      updateDOM();
-      status.textContent = "未检测到手 · 字重保持";
+      applyAxes();
+      status.textContent = "未检测到手 · 保持上次控制";
       return;
     }
+    xhetMissFrames = 0;
 
     const parsed = rawHands
       .map(parseHand)
@@ -472,7 +533,7 @@
     if (weightHand) {
       palmStableFrames++;
     } else {
-      palmStableFrames = 0;
+      palmStableFrames = Math.max(0, palmStableFrames - 1);
     }
 
     const isAdjustingWeight = !!weightHand;
@@ -511,18 +572,18 @@
         const isLeftSide = i < SPLIT_INDEX;
         const isFrozen = isLeftSide ? freezeLeft : freezeRight;
         if (isFrozen) continue;
-        currentXhetDeltas[i] += (targetDeltas[i] - currentXhetDeltas[i]) * 0.28;
+        currentXhetDeltas[i] += (targetDeltas[i] - currentXhetDeltas[i]) * 0.12;
       }
     }
 
     if (weightHand && palmStableFrames >= PALM_STABLE_NEED) {
       const targetW = weightHand.weightFromY;
       for (let i = 0; i < CHAR_COUNT; i++) {
-        currentWeights[i] += (targetW - currentWeights[i]) * 0.12;
+        currentWeights[i] += (targetW - currentWeights[i]) * 0.08;
       }
     }
 
-    updateDOM();
+    applyAxes();
 
     if (weightHand) {
       status.textContent = palmStableFrames >= PALM_STABLE_NEED
@@ -553,7 +614,7 @@
     currentWeights.fill(0);
     currentXhetDeltas.fill(0);
     palmStableFrames = 0;
-    updateDOM();
+    applyAxes();
     startButton.textContent = "开启摄像头";
     startButton.disabled = false;
     status.textContent = "已停止";
@@ -564,10 +625,8 @@
     else start();
   });
   window.addEventListener("beforeunload", stopCameraOnly);
-  window.addEventListener("resize", updateDOM);
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener("resize", updateDOM);
-  }
+  window.addEventListener("resize", updateLayout);
+  if (window.visualViewport) window.visualViewport.addEventListener("resize", updateLayout);
   updateDOM();
 </script>
 </body>
