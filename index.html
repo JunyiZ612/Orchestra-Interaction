@@ -40,8 +40,8 @@
     #wordContainer {
       position: absolute;
       left: 50%;
-      top: 50%;
-      transform: translate(-50%, -54%);
+      top: 46%;
+      transform: translate(-50%, -50%);
       width: fit-content;
       max-width: 94vw;
       display: flex;
@@ -70,36 +70,38 @@
     .top-char { font-family: "Orchestra Variable Top", serif; }
     .bottom-char { font-family: "Orchestra Variable Bottom", serif; }
 
+    /* 往上挪一点：离开最底边，留出安全间距 */
     #footer {
       position: fixed;
       left: 0;
       right: 0;
-      bottom: 0;
+      bottom: max(44px, calc(env(safe-area-inset-bottom) + 28px));
       z-index: 20;
-      padding: 10px 14px max(14px, env(safe-area-inset-bottom));
+      padding: 8px 14px;
       display: flex;
       flex-wrap: wrap;
       align-items: center;
       justify-content: center;
-      gap: 10px 14px;
-      background: linear-gradient(to top, rgba(0, 0, 0, 0.92) 65%, rgba(0, 0, 0, 0));
-      color: rgba(245, 241, 232, 0.85);
+      gap: 8px 12px;
+      background: rgba(0, 0, 0, 0.72);
+      backdrop-filter: blur(6px);
+      color: rgba(245, 241, 232, 0.88);
       font-size: clamp(11px, 1.8vw, 14px);
       letter-spacing: 0.08em;
       font-variant-numeric: tabular-nums;
     }
     #weightReadout {
-      padding: 5px 10px;
-      border: 1px solid rgba(245, 241, 232, 0.25);
-      background: rgba(0, 0, 0, 0.75);
+      padding: 4px 10px;
+      border: 1px solid rgba(245, 241, 232, 0.28);
+      background: rgba(0, 0, 0, 0.8);
       color: #f5f1e8;
       white-space: nowrap;
     }
     #startButton {
       appearance: none;
       border: 1px solid rgba(245, 241, 232, 0.75);
-      padding: clamp(6px, 1.2vh, 10px) clamp(12px, 2vw, 18px);
-      background: rgba(18, 18, 18, 0.92);
+      padding: clamp(6px, 1vh, 9px) clamp(12px, 2vw, 18px);
+      background: rgba(22, 22, 22, 0.95);
       color: #f5f1e8;
       font: inherit;
       letter-spacing: inherit;
@@ -117,15 +119,15 @@
     #status {
       display: inline-block;
       max-width: 92vw;
-      color: rgba(245, 241, 232, 0.78);
+      color: rgba(245, 241, 232, 0.82);
       text-align: center;
       line-height: 1.35;
     }
 
     #cameraFrame {
       position: fixed;
-      top: max(12px, env(safe-area-inset-top));
-      right: max(12px, env(safe-area-inset-right));
+      top: max(14px, env(safe-area-inset-top));
+      right: max(14px, env(safe-area-inset-right));
       width: clamp(96px, min(220px, 24vw), 220px);
       aspect-ratio: 4 / 3;
       padding: 3px;
@@ -144,12 +146,9 @@
     }
 
     @media (max-height: 520px) {
-      #wordContainer {
-        transform: translate(-50%, -56%);
-      }
       #footer {
-        padding-top: 6px;
-        padding-bottom: max(8px, env(safe-area-inset-bottom));
+        bottom: max(22px, calc(env(safe-area-inset-bottom) + 12px));
+        padding: 6px 10px;
         gap: 6px 10px;
       }
     }
@@ -228,9 +227,10 @@
   function updateDOM() {
     const vw = window.innerWidth;
     const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-    const footerHeight = footer ? footer.offsetHeight : 64;
+    const footerRect = footer ? footer.getBoundingClientRect() : { height: 70, top: vh - 90 };
+    const bottomReserved = Math.max(80, vh - footerRect.top + 12);
     const topSafe = Math.max(24, vh * 0.06);
-    const usableHeight = Math.max(80, vh - footerHeight - topSafe - 16);
+    const usableHeight = Math.max(80, vh - bottomReserved - topSafe);
     const usableWidth = Math.max(120, vw * 0.94);
 
     const avgW = currentWeights.reduce((a, b) => a + b, 0) / CHAR_COUNT;
@@ -240,9 +240,7 @@
     const weightGapAdd = (avgW / 900) * 0.08;
     const gapEm = baseGapEm + weightGapAdd;
 
-    // 1. 先按可用高度估算字号（两行字 + 行间距控制在 usableHeight 内）
     const heightBasedSize = (usableHeight / (2 + gapEm)) * 0.92;
-    // 2. 再按可用宽度估算字号（17 个字符单行约占 8.2~9.5 个 em 宽）
     const widthBasedSize = usableWidth / 9.2;
 
     let targetFontSize = Math.max(20, Math.min(heightBasedSize, widthBasedSize, 520)) * weightScale;
@@ -252,7 +250,6 @@
     }
     wordContainer.style.gap = `${gapEm * targetFontSize}px`;
 
-    // 3. 根据实际测量宽高做二次收敛，确保绝对不超出可用宽高
     const measuredWidth = Math.max(topRow.scrollWidth, bottomRow.scrollWidth);
     const measuredHeight = wordContainer.getBoundingClientRect().height;
 
@@ -265,7 +262,6 @@
     }
     wordContainer.style.gap = `${gapEm * finalFontSize}px`;
 
-    // 把文字中心略微往上偏一点，给底部 footer 留出呼吸感
     const centerY = topSafe + usableHeight / 2;
     wordContainer.style.top = `${centerY}px`;
     wordContainer.style.transform = "translate(-50%, -50%)";
@@ -297,6 +293,32 @@
     previewContext.putImageData(frame, 0, 0);
   }
 
+  async function createHandLandmarkerWithFallback(vision) {
+    const modelUrl =
+      "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
+    try {
+      return await HandLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: modelUrl,
+          delegate: "GPU"
+        },
+        runningMode: "VIDEO",
+        numHands: 2
+      });
+    } catch (gpuError) {
+      console.warn("GPU delegate failed, falling back to CPU:", gpuError);
+      status.textContent = "GPU 初始化失败，正在切换 CPU 模式…";
+      return await HandLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: modelUrl,
+          delegate: "CPU"
+        },
+        runningMode: "VIDEO",
+        numHands: 2
+      });
+    }
+  }
+
   async function start() {
     startButton.disabled = true;
     status.textContent = "正在请求摄像头权限…";
@@ -306,7 +328,7 @@
       }
 
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 960 } },
+        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
         audio: false
       });
       video.srcObject = stream;
@@ -319,14 +341,7 @@
         "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm"
       );
 
-      landmarker = await HandLandmarker.createFromOptions(vision, {
-        baseOptions: {
-          modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
-          delegate: "GPU"
-        },
-        runningMode: "VIDEO",
-        numHands: 4
-      });
+      landmarker = await createHandLandmarkerWithFallback(vision);
 
       status.textContent = "请将一只手横向摊开";
       startButton.textContent = "终止摄像";
@@ -347,8 +362,12 @@
       lastVideoTime = video.currentTime;
       renderCameraPreview();
       if (landmarker) {
-        const results = landmarker.detectForVideo(video, performance.now());
-        updateFromResults(results);
+        try {
+          const results = landmarker.detectForVideo(video, performance.now());
+          updateFromResults(results);
+        } catch (detectError) {
+          console.error("Detect frame error:", detectError);
+        }
       }
     }
     animationId = requestAnimationFrame(loop);
