@@ -244,7 +244,6 @@
   const currentWeights = new Array(CHAR_COUNT).fill(0);
   const currentXhetDeltas = new Array(CHAR_COUNT).fill(0);
 
-  // 手动覆盖状态（当用户拖动 gap 或 size 滑块时生效；拖动 weight 滑块则直接改字重，并允许后续手势继续更新）
   let customGapEm = null;
   let customSizeScale = null;
 
@@ -256,7 +255,6 @@
   let animationId = null;
   let lastVideoTime = -1;
 
-  // 根据实测锚点 (0, -0.05), (500, 0.31), (900, 0.58) 进行分段线性插值
   function getDefaultGapEm(w) {
     const clampedW = Math.max(0, Math.min(900, w));
     if (clampedW <= 500) {
@@ -265,7 +263,6 @@
     return 0.31 + ((clampedW - 500) / 400) * (0.58 - 0.31);
   }
 
-  // 根据实测锚点 (0, 1.00), (500, 0.73), (900, 0.50) 进行分段线性插值
   function getDefaultSizeScale(w) {
     const clampedW = Math.max(0, Math.min(900, w));
     if (clampedW <= 500) {
@@ -344,6 +341,7 @@
     toggleDebugBtn.textContent = collapsed ? "展开" : "收起";
   });
 
+  // 独立调字重：仅修改 currentWeights，不触碰 currentXhetDeltas
   weightSlider.addEventListener("input", () => {
     const w = Number(weightSlider.value);
     currentWeights.fill(w);
@@ -492,9 +490,6 @@
 
     if (rawHands.length === 0) {
       palmStableFrames = 0;
-      for (let i = 0; i < CHAR_COUNT; i++) {
-        currentXhetDeltas[i] += (0 - currentXhetDeltas[i]) * 0.2;
-      }
       updateDOM();
       status.textContent = "未检测到手 · 字重保持";
       return;
@@ -532,6 +527,7 @@
 
     const isAdjustingWeight = !!weightHand;
 
+    // 仅在非调字重状态下更新 XHET，调字重时保持 XHET 完全不变
     if (!isAdjustingWeight) {
       const targetDeltas = new Array(CHAR_COUNT).fill(0);
 
@@ -570,6 +566,7 @@
       }
     }
 
+    // 独立调字重：只更新 currentWeights，不改 currentXhetDeltas
     if (weightHand && palmStableFrames >= PALM_STABLE_NEED) {
       const targetW = weightHand.weightFromY;
       for (let i = 0; i < CHAR_COUNT; i++) {
