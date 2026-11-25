@@ -42,7 +42,7 @@
     }
     .top-char, .bottom-char {
       font-size: 280px; line-height: 1; color: #fff;
-      display: inline-block; will-change: font-variation-settings;
+      display: inline-block;
     }
     .top-char { font-family: "Orchestra Variable Top", serif; }
     .bottom-char { font-family: "Orchestra Variable Bottom", serif; }
@@ -224,6 +224,7 @@
 
   const topSpans = [];
   const bottomSpans = [];
+  const allSpans = [];
 
   for (let i = 0; i < CHAR_COUNT; i++) {
     const ch = TEXT[i];
@@ -233,16 +234,33 @@
     tSpan.textContent = ch;
     topRow.appendChild(tSpan);
     topSpans.push(tSpan);
+    allSpans.push(tSpan);
 
     const bSpan = document.createElement("span");
     bSpan.className = "bottom-char";
     bSpan.textContent = ch;
     bottomRow.appendChild(bSpan);
     bottomSpans.push(bSpan);
+    allSpans.push(bSpan);
   }
 
   const currentWeights = new Array(CHAR_COUNT).fill(0);
   const currentXhetDeltas = new Array(CHAR_COUNT).fill(0);
+  const lastAppliedVariations = new Array(CHAR_COUNT).fill("");
+
+  // 手部跟踪平滑状态，减少大幅移动时的单帧抖动
+  const smoothedHands = [
+    { active: false, x: null, y: null, horizontalFrames: 0 },
+    { active: false, x: null, y: null, horizontalFrames: 0 }
+  ];
+
+  // DOM 缓存，避免每帧重复写入相同样式或重复读取布局
+  let lastAppliedFontSize = -1;
+  let lastAppliedGapPx = -1;
+  let lastMeasuredSizeScale = -1;
+  let lastMeasuredViewW = -1;
+  let lastFitScale = 1;
+  let lastReadoutText = "";
 
   let customGapEm = null;
   let customSizeScale = null;
@@ -271,6 +289,11 @@
     return 0.73 + ((clampedW - 500) / 400) * (0.50 - 0.73);
   }
 
+  function markLayoutDirty() {
+    lastMeasuredViewW = -1;
+    lastMeasuredSizeScale = -1;
+  }
+
   function updateDOM() {
     const viewW = window.innerWidth;
     const viewH = window.innerHeight;
@@ -293,37 +316,62 @@
     const rawBaseSize = Math.max(minAllowedSize, Math.min(maxAllowedSize, viewW * baseMultiplier));
     const targetFontSize = rawBaseSize * activeSizeScale;
 
-    for (const span of [...topSpans, ...bottomSpans]) {
-      span.style.fontSize = `${targetFontSize}px`;
+    // 仅当视口宽度或字号倍率变化明显时，才重新测量 scrollWidth，减轻 iPad 重排闪跳
+    const scaleDelta = Math.abs(activeSizeScale - lastMeasuredSizeScale);
+    if (viewW !== lastMeasuredViewW || scaleDelta > 0.015 || lastMeasuredSizeScale < 0) {
+      for (let i = 0; i < allSpans.length; i++) {
+        allSpans[i].style.fontSize = `${targetFontSize}px`;
+      }
+      const availableWidth = viewW * 0.94;
+      const measuredWidth = Math.max(topRow.scrollWidth, bottomRow.scrollWidth);
+      lastFitScale = measuredWidth > 0 ? Math.min(1, availableWidth / measuredWidth) : 1;
+      lastMeasuredViewW = viewW;
+      lastMeasuredSizeScale = activeSizeScale;
     }
 
-    const availableWidth = viewW * 0.94;
-    const measuredWidth = Math.max(topRow.scrollWidth, bottomRow.scrollWidth);
-    const fitScale = measuredWidth > 0 ? Math.min(1, availableWidth / measuredWidth) : 1;
-    const finalFontSize = targetFontSize * fitScale;
-
-    for (const span of [...topSpans, ...bottomSpans]) {
-      span.style.fontSize = `${finalFontSize}px`;
+    const finalFontSize = Number((targetFontSize * lastFitScale).toFixed(2));
+    if (Math.abs(finalFontSize - lastAppliedFontSize) >= 0.25) {
+      for (let i = 0; i < allSpans.length; i++) {
+        allSpans[i].style.fontSize = `${finalFontSize}px`;
+      }
+      lastAppliedFontSize = finalFontSize;
     }
 
-    wordContainer.style.gap = `${activeGapEm * finalFontSize}px`;
+    const gapPx = Number((activeGapEm * finalFontSize).toFixed(2));
+    if (Math.abs(gapPx - lastAppliedGapPx) >= 0.25) {
+      wordContainer.style.gap = `${gapPx}px`;
+      lastAppliedGapPx = gapPx;
+    }
 
+    // 仅当单字参数发生变化时才更新 fontVariationSettings
     for (let i = 0; i < CHAR_COUNT; i++) {
       const w = Math.round(currentWeights[i]);
       const delta = currentXhetDeltas[i];
-      const bottomXhet = Math.min(100, Math.max(0, 50 + delta));
+      const bottomXhet = Math.round(Math.min(100, Math.max(0, 50 + delta)));
       const topXhet = 100 - bottomXhet;
-      topSpans[i].style.fontVariationSettings =
-        `"wght" ${w}, "XHET" ${Math.round(topXhet)}, "wdth" 75, "opsz" 72`;
-      bottomSpans[i].style.fontVariationSettings =
-        `"wght" ${w}, "XHET" ${Math.round(bottomXhet)}, "wdth" 75, "opsz" 72`;
+      const varSettings = `"wght" ${w}, "XHET" ${topXhet}, "wdth" 75, "opsz" 72`;
+      const bottomVarSettings = `"wght" ${w}, "XHET" ${bottomXhet}, "wdth" 75, "opsz" 72`;
+      const combinedKey = `${varSettings}|${bottomVarSettings}`;
+
+      if (combinedKey !== lastAppliedVariations[i]) {
+        topSpans[i].style.fontVariationSettings = varSettings;
+        bottomSpans[i].style.fontVariationSettings = bottomVarSettings;
+        lastAppliedVariations[i] = combinedKey;
+      }
     }
 
     const roundedW = Math.round(avgW);
-    weightVal.textContent = `${roundedW}`;
-    gapVal.textContent = `${activeGapEm.toFixed(2)}`;
-    sizeVal.textContent = `${activeSizeScale.toFixed(2)}`;
-    weightReadout.textContent = `wght ${roundedW}`;
+    const nextReadout = `wght ${roundedW}`;
+    if (nextReadout !== lastReadoutText) {
+      weightVal.textContent = `${roundedW}`;
+      gapVal.textContent = `${activeGapEm.toFixed(2)}`;
+      sizeVal.textContent = `${activeSizeScale.toFixed(2)}`;
+      weightReadout.textContent = nextReadout;
+      lastReadoutText = nextReadout;
+    } else {
+      gapVal.textContent = `${activeGapEm.toFixed(2)}`;
+      sizeVal.textContent = `${activeSizeScale.toFixed(2)}`;
+    }
 
     if (document.activeElement !== weightSlider) {
       weightSlider.value = `${roundedW}`;
@@ -341,7 +389,6 @@
     toggleDebugBtn.textContent = collapsed ? "展开" : "收起";
   });
 
-  // 独立调字重：仅修改 currentWeights，不触碰 currentXhetDeltas
   weightSlider.addEventListener("input", () => {
     const w = Number(weightSlider.value);
     currentWeights.fill(w);
@@ -355,6 +402,7 @@
 
   sizeSlider.addEventListener("input", () => {
     customSizeScale = Number(sizeSlider.value);
+    markLayoutDirty();
     updateDOM();
   });
 
@@ -386,7 +434,7 @@
           delegate: "GPU"
         },
         runningMode: "VIDEO",
-        numHands: 4
+        numHands: 2
       });
 
       status.textContent = "正在请求摄像头权限……";
@@ -400,6 +448,7 @@
       status.textContent = "请将一只手横向摊开";
       startButton.textContent = "终止摄像";
       startButton.disabled = false;
+      markLayoutDirty();
       updateDOM();
       loop();
     } catch (error) {
@@ -474,14 +523,46 @@
 
     return {
       mirroredX,
+      tipY: indexTip.y,
       apparentArea,
       letterPos,
       xhetDelta,
       isFist,
       isHorizontalPalm,
+      weightFromY
+    };
+  }
+
+  function smoothHandSlot(slot, rawHand) {
+    if (!rawHand) {
+      slot.active = false;
+      slot.horizontalFrames = 0;
+      return null;
+    }
+
+    const alpha = 0.45;
+    if (!slot.active || slot.x === null || slot.y === null) {
+      slot.x = rawHand.mirroredX;
+      slot.y = rawHand.tipY;
+    } else {
+      slot.x = slot.x + (rawHand.mirroredX - slot.x) * alpha;
+      slot.y = slot.y + (rawHand.tipY - slot.y) * alpha;
+    }
+    slot.active = true;
+    slot.horizontalFrames = rawHand.isHorizontalPalm ? slot.horizontalFrames + 1 : 0;
+
+    const letterPos = slot.x * (CHAR_COUNT - 1);
+    const normalizedHeight = Math.max(0, Math.min(1, (0.85 - slot.y) / 0.7));
+    const xhetDelta = (normalizedHeight - 0.5) * 150;
+    const weightFromY = Math.round(normalizedHeight * 900);
+
+    return {
+      ...rawHand,
+      mirroredX: slot.x,
+      letterPos,
+      xhetDelta,
       weightFromY,
-      openness,
-      verticalRatio
+      confirmedHorizontalPalm: rawHand.isHorizontalPalm && slot.horizontalFrames >= 2
     };
   }
 
@@ -490,6 +571,10 @@
 
     if (rawHands.length === 0) {
       palmStableFrames = 0;
+      smoothedHands[0].active = false;
+      smoothedHands[0].horizontalFrames = 0;
+      smoothedHands[1].active = false;
+      smoothedHands[1].horizontalFrames = 0;
       updateDOM();
       status.textContent = "未检测到手 · 字重保持";
       return;
@@ -501,22 +586,34 @@
       .slice(0, 2)
       .sort((a, b) => a.mirroredX - b.mirroredX);
 
-    let leftHand = null;
-    let rightHand = null;
-
+    const activeHands = [];
     if (parsed.length >= 2) {
-      leftHand = parsed[0];
-      rightHand = parsed[parsed.length - 1];
+      const l = smoothHandSlot(smoothedHands[0], parsed[0]);
+      const r = smoothHandSlot(smoothedHands[1], parsed[parsed.length - 1]);
+      if (l) activeHands.push(l);
+      if (r) activeHands.push(r);
     } else {
-      if (parsed[0].mirroredX < 0.5) leftHand = parsed[0];
-      else rightHand = parsed[0];
+      const h = parsed[0];
+      const useLeftSlot = h.mirroredX < 0.5;
+      if (useLeftSlot) {
+        smoothHandSlot(smoothedHands[1], null);
+        const l = smoothHandSlot(smoothedHands[0], h);
+        if (l) activeHands.push(l);
+      } else {
+        smoothHandSlot(smoothedHands[0], null);
+        const r = smoothHandSlot(smoothedHands[1], h);
+        if (r) activeHands.push(r);
+      }
     }
+
+    const leftHand = activeHands.find(h => h.mirroredX < 0.5) || (activeHands.length >= 2 ? activeHands[0] : null);
+    const rightHand = activeHands.find(h => h.mirroredX >= 0.5) || (activeHands.length >= 2 ? activeHands[activeHands.length - 1] : null);
 
     const freezeLeft = leftHand ? leftHand.isFist : false;
     const freezeRight = rightHand ? rightHand.isFist : false;
 
-    const weightHand = parsed
-      .filter(h => h.isHorizontalPalm)
+    const weightHand = activeHands
+      .filter(h => h.confirmedHorizontalPalm)
       .sort((a, b) => b.apparentArea - a.apparentArea)[0];
 
     if (weightHand) {
@@ -527,12 +624,11 @@
 
     const isAdjustingWeight = !!weightHand;
 
-    // 仅在非调字重状态下更新 XHET，调字重时保持 XHET 完全不变
-    if (!isAdjustingWeight) {
+    if (!isAdjustingWeight && activeHands.length > 0) {
       const targetDeltas = new Array(CHAR_COUNT).fill(0);
 
-      if (parsed.length === 1) {
-        const h = parsed[0];
+      if (activeHands.length === 1) {
+        const h = activeHands[0];
         const spread = 2.2;
         for (let i = 0; i < CHAR_COUNT; i++) {
           const dist = Math.abs(i - h.letterPos);
@@ -540,8 +636,8 @@
           targetDeltas[i] = h.xhetDelta * factor;
         }
       } else {
-        const lH = parsed[0];
-        const rH = parsed[parsed.length - 1];
+        const lH = activeHands[0];
+        const rH = activeHands[activeHands.length - 1];
         const span = Math.max(rH.letterPos - lH.letterPos, 0.001);
 
         for (let i = 0; i < CHAR_COUNT; i++) {
@@ -562,11 +658,14 @@
         const isLeftSide = i < SPLIT_INDEX;
         const isFrozen = isLeftSide ? freezeLeft : freezeRight;
         if (isFrozen) continue;
-        currentXhetDeltas[i] += (targetDeltas[i] - currentXhetDeltas[i]) * 0.28;
+        // 轻微死区，过滤大摆幅时的微小锯齿抖动
+        const diff = targetDeltas[i] - currentXhetDeltas[i];
+        if (Math.abs(diff) > 0.35) {
+          currentXhetDeltas[i] += diff * 0.25;
+        }
       }
     }
 
-    // 独立调字重：只更新 currentWeights，不改 currentXhetDeltas
     if (weightHand && palmStableFrames >= PALM_STABLE_NEED) {
       const targetW = weightHand.weightFromY;
       for (let i = 0; i < CHAR_COUNT; i++) {
@@ -604,7 +703,9 @@
     }
     currentWeights.fill(0);
     currentXhetDeltas.fill(0);
+    lastAppliedVariations.fill("");
     palmStableFrames = 0;
+    markLayoutDirty();
     updateDOM();
     startButton.textContent = "开启摄像头";
     startButton.disabled = false;
@@ -616,8 +717,14 @@
     else start();
   });
   window.addEventListener("beforeunload", stopCameraOnly);
-  window.addEventListener("resize", updateDOM);
-  window.visualViewport?.addEventListener("resize", updateDOM);
+  window.addEventListener("resize", () => {
+    markLayoutDirty();
+    updateDOM();
+  });
+  window.visualViewport?.addEventListener("resize", () => {
+    markLayoutDirty();
+    updateDOM();
+  });
   updateDOM();
 </script>
 </body>
