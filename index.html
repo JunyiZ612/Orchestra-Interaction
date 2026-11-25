@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>ORCHESTRA VARIABLE · 线性联动标定版</title>
+  <title>ORCHESTRA VARIABLE · 抗抖降敏版</title>
   <style>
     @font-face {
       font-family: "Orchestra Variable Top";
@@ -282,6 +282,12 @@
   const BASE_XHET = 50;
   const TOTAL_XHET = 100;
 
+  // 抗抖与降敏参数：减少微小手势抖动引起的跳变
+  const WEIGHT_DEADZONE = 20;       // 字重变化小于 20 不触发更新
+  const WEIGHT_STEP_LIMIT = 24;     // 单帧字重最大步进，避免跳变
+  const XHET_DEADZONE = 3.5;        // XHET 变化小于 3.5 不触发更新
+  const PALM_STABLE_NEED = 8;       // 手掌横向摊开需连续稳定帧数
+
   const video = document.querySelector("#video");
   const cameraPreview = document.querySelector("#cameraPreview");
   const previewContext = cameraPreview.getContext("2d", { willReadFrequently: true });
@@ -292,7 +298,6 @@
   const weightReadout = document.querySelector("#weightReadout");
   const startButton = document.querySelector("#startButton");
 
-  // 滑块控件
   const wghtSlider = document.querySelector("#wghtSlider");
   const sizeSlider = document.querySelector("#sizeSlider");
   const gapSlider = document.querySelector("#gapSlider");
@@ -324,15 +329,16 @@
   const currentWeights = new Array(CHAR_COUNT).fill(0);
   const currentXhetDeltas = new Array(CHAR_COUNT).fill(0);
 
+  let smoothedIndexX = null;
+  let smoothedIndexY = null;
   let palmStableFrames = 0;
-  const PALM_STABLE_NEED = 6;
+  let isHorizontalPalmActive = false;
 
   let landmarker = null;
   let stream = null;
   let animationId = null;
   let lastVideoTime = -1;
 
-  // 根据字重线性计算对应的字号和间距，并同步到滑块
   function syncLinearMetricsFromWeight(wght) {
     const t = Math.max(0, Math.min(1, wght / 900));
     const linearSize = Math.round(MIN_FONT_SIZE + (MAX_FONT_SIZE - MIN_FONT_SIZE) * t);
@@ -346,13 +352,11 @@
     const gapPx = Number(gapSlider.value);
     const avgW = currentWeights.reduce((a, b) => a + b, 0) / CHAR_COUNT;
 
-    // 同步滑块和状态显示
     wghtSlider.value = String(Math.round(avgW));
     wghtVal.textContent = String(Math.round(avgW));
     sizeVal.textContent = `${fontSize} px`;
     gapVal.textContent = `${gapPx} px`;
 
-    // 直接应用当前间距与字号（无缓动）
     wordContainer.style.gap = `${gapPx}px`;
 
     for (let i = 0; i < CHAR_COUNT; i++) {
@@ -372,7 +376,6 @@
     weightReadout.textContent = `wght ${Math.round(avgW)}`;
   }
 
-  // 拖动字重滑块时，字号和间距按 360/0 -> 140/55 匀速线性联动
   wghtSlider.addEventListener("input", () => {
     const w = Number(wghtSlider.value);
     currentWeights.fill(w);
@@ -380,7 +383,6 @@
     updateDOM();
   });
 
-  // 单独微调字号或间距滑块
   sizeSlider.addEventListener("input", updateDOM);
   gapSlider.addEventListener("input", updateDOM);
 
@@ -398,16 +400,9 @@
 
   function renderCameraPreview() {
     if (video.readyState < 2) return;
+    // 隔帧绘制预览，减少主线程占用
+    if (Math.round(video.currentTime * 30) % 2 !== 0) return;
     previewContext.drawImage(video, 0, 0, cameraPreview.width, cameraPreview.height);
-    const frame = previewContext.getImageData(0, 0, cameraPreview.width, cameraPreview.height);
-    const pixels = frame.data;
-    for (let i = 0; i < pixels.length; i += 4) {
-      const gray = 0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2];
-      const level = Math.min(4, Math.round(gray / 255 * 4));
-      const value = [0, 64, 128, 192, 255][level];
-      pixels[i] = pixels[i + 1] = pixels[i + 2] = value;
-    }
-    previewContext.putImageData(frame, 0, 0);
   }
 
   async function start() {
@@ -478,6 +473,15 @@
     const indexTip = points[8];
     const palmScale = Math.max(distance(wrist, middleMcp), 0.001);
 
+    // 轻度平滑食指指尖坐标，过滤微小抖动
+    if (smoothedIndexX === null) {
+      smoothedIndexX = indexTip.x;
+      smoothedIndexY = indexTip.y;
+    } else {
+      smoothedIndexX += (indexTip.x - smoothedIndexX) * 0.45;
+      smoothedIndexY += (indexTip.y - smoothedIndexY) * 0.45;
+    }
+
     const tips = [4, 8, 12, 16, 20];
     const reaches = tips.map(idx => distance(points[idx], wrist) / palmScale);
     const openness = reaches.reduce((a, b) => a + b, 0) / reaches.length;
@@ -490,8 +494,6 @@
     const axisY = middleMcp.y - wrist.y;
     const axisLen = Math.hypot(axisX, axisY) || 0.001;
     const verticalRatio = Math.abs(axisY) / axisLen;
-    const isNearlyHorizontal = verticalRatio < 0.32;
-    const isOpenPalm = openness > 1.68;
 
     const ringTip = points[16];
     const tipYSpread = Math.max(
@@ -499,13 +501,22 @@
       Math.abs(ringTip.y - middleTip.y),
       Math.abs(indexTip.y - ringTip.y)
     );
-    const fingersAligned = tipYSpread < 0.07;
-    const isHorizontalPalm = isNearlyHorizontal && isOpenPalm && fingersAligned;
 
-    const mirroredX = Math.max(0, Math.min(1, 1 - indexTip.x));
+    // 滞回判定：进入要求更明确，退出放宽阈值，减少临界来回闪切
+    if (!isHorizontalPalmActive) {
+      if (verticalRatio < 0.28 && openness > 1.72 && tipYSpread < 0.065) {
+        isHorizontalPalmActive = true;
+      }
+    } else {
+      if (verticalRatio > 0.36 || openness < 1.58 || tipYSpread > 0.085) {
+        isHorizontalPalmActive = false;
+      }
+    }
+
+    const mirroredX = Math.max(0, Math.min(1, 1 - smoothedIndexX));
     const letterPos = mirroredX * (CHAR_COUNT - 1);
 
-    const normalizedHeight = Math.max(0, Math.min(1, (0.85 - indexTip.y) / 0.7));
+    const normalizedHeight = Math.max(0, Math.min(1, (0.85 - smoothedIndexY) / 0.7));
     const xhetDelta = (normalizedHeight - 0.5) * 150;
     const weightFromY = Math.round(normalizedHeight * 900);
 
@@ -520,10 +531,8 @@
       letterPos,
       xhetDelta,
       isFist,
-      isHorizontalPalm,
-      weightFromY,
-      openness,
-      verticalRatio
+      isHorizontalPalm: isHorizontalPalmActive,
+      weightFromY
     };
   }
 
@@ -532,10 +541,18 @@
 
     if (rawHands.length === 0) {
       palmStableFrames = 0;
+      isHorizontalPalmActive = false;
+      smoothedIndexX = null;
+      smoothedIndexY = null;
+
+      let changed = false;
       for (let i = 0; i < CHAR_COUNT; i++) {
-        currentXhetDeltas[i] += (0 - currentXhetDeltas[i]) * 0.2;
+        if (Math.abs(currentXhetDeltas[i]) > XHET_DEADZONE) {
+          currentXhetDeltas[i] = 0;
+          changed = true;
+        }
       }
-      updateDOM();
+      if (changed) updateDOM();
       status.textContent = "未检测到手 · 字重保持";
       return;
     }
@@ -571,6 +588,7 @@
     }
 
     const isAdjustingWeight = !!weightHand;
+    let didUpdate = false;
 
     if (!isAdjustingWeight) {
       const targetDeltas = new Array(CHAR_COUNT).fill(0);
@@ -606,18 +624,32 @@
         const isLeftSide = i < SPLIT_INDEX;
         const isFrozen = isLeftSide ? freezeLeft : freezeRight;
         if (isFrozen) continue;
-        currentXhetDeltas[i] += (targetDeltas[i] - currentXhetDeltas[i]) * 0.28;
+        if (Math.abs(targetDeltas[i] - currentXhetDeltas[i]) >= XHET_DEADZONE) {
+          currentXhetDeltas[i] = targetDeltas[i];
+          didUpdate = true;
+        }
       }
     }
 
-    // 去掉加粗缓动：直接同步目标字重、字号与行间距
     if (weightHand && palmStableFrames >= PALM_STABLE_NEED) {
-      const targetW = weightHand.weightFromY;
-      currentWeights.fill(targetW);
-      syncLinearMetricsFromWeight(targetW);
+      const currentAvgW = currentWeights.reduce((a, b) => a + b, 0) / CHAR_COUNT;
+      const diff = weightHand.weightFromY - currentAvgW;
+
+      // 去掉微小 weight 抖动：只有幅度超过死区才调整，且按步长上限推进
+      if (Math.abs(diff) >= WEIGHT_DEADZONE) {
+        const step = Math.sign(diff) * Math.min(Math.abs(diff), WEIGHT_STEP_LIMIT);
+        const nextW = Math.max(0, Math.min(900, Math.round(currentAvgW + step)));
+        if (Math.abs(nextW - currentAvgW) >= 1) {
+          currentWeights.fill(nextW);
+          syncLinearMetricsFromWeight(nextW);
+          didUpdate = true;
+        }
+      }
     }
 
-    updateDOM();
+    if (didUpdate) {
+      updateDOM();
+    }
 
     if (weightHand) {
       status.textContent = palmStableFrames >= PALM_STABLE_NEED
@@ -645,6 +677,9 @@
       landmarker.close();
       landmarker = null;
     }
+    smoothedIndexX = null;
+    smoothedIndexY = null;
+    isHorizontalPalmActive = false;
     currentWeights.fill(0);
     currentXhetDeltas.fill(0);
     palmStableFrames = 0;
