@@ -1,9 +1,10 @@
+
 <!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ORCHESTRA VARIABLE · 动态字重防重叠版</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>ORCHESTRA VARIABLE</title>
   <style>
     @font-face {
       font-family: "Orchestra Variable Top";
@@ -15,81 +16,378 @@
       src: url("OrchestraVariableBottom-VariableVF.ttf") format("truetype");
       font-weight: 0 900;
     }
+
     * { box-sizing: border-box; }
+
     html, body {
-      width: 100%; height: 100%; margin: 0; overflow: hidden;
-      background: #000; color: #f5f1e8;
+      width: 100%;
+      height: 100%;
+      height: 100dvh;
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+      color: #f5f1e8;
     }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
     #stage {
-      position: fixed; inset: 0; width: 100vw; height: 100vh;
-      min-height: 0; overflow: hidden; background: #000;
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100dvh;
+      min-height: 0;
+      overflow: hidden;
+      background: #000;
     }
+
     #wordContainer {
-      position: absolute; left: 50%; top: 50%;
+      position: absolute;
+      left: 50%;
+      top: 50%;
       transform: translate(-50%, -50%);
-      width: fit-content; display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      gap: 0px; 
-      user-select: none; pointer-events: none;
+      width: fit-content;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0px;
+      user-select: none;
+      pointer-events: none;
       transition: gap 0.15s ease;
     }
+
     #topRow, #bottomRow {
-      display: flex; justify-content: center; white-space: nowrap;
-      letter-spacing: 0.02em; 
-      line-height: 1; 
+      display: flex;
+      justify-content: center;
+      white-space: nowrap;
+      letter-spacing: 0.02em;
+      line-height: 1;
     }
+
     .top-char, .bottom-char {
-      font-size: 280px; color: #f5f1e8;
-      display: inline-block; will-change: font-variation-settings;
+      font-size: 280px;
+      color: #f5f1e8;
+      display: inline-block;
+      will-change: font-variation-settings;
     }
-    .top-char { font-family: "Orchestra Variable Top", serif; }
-    .bottom-char { font-family: "Orchestra Variable Bottom", serif; }
+
+    .top-char {
+      font-family: "Orchestra Variable Top", serif;
+    }
+
+    .bottom-char {
+      font-family: "Orchestra Variable Bottom", serif;
+    }
+
+    /* Bottom UI: iPad safe-area adaptation */
     #footer {
-      position: absolute; left: 0; right: 0; bottom: max(16px, env(safe-area-inset-bottom));
-      display: flex; align-items: center; justify-content: center; gap: 14px;
-      color: rgba(245,241,232,.58); font-size: 11px; letter-spacing: .08em;
+      position: fixed;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+      z-index: 20;
+
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 8px 12px;
+
+      width: calc(100% - 24px);
+      max-width: 760px;
+      padding: 8px 10px;
+
+      color: rgba(245,241,232,.8);
+      font-size: clamp(11px, 1.6vw, 14px);
+      letter-spacing: .06em;
       font-variant-numeric: tabular-nums;
+
+      background: rgba(0,0,0,.78);
+      border: 1px solid rgba(245,241,232,.16);
     }
+
+    #weightReadout {
+      white-space: nowrap;
+      padding: 4px 8px;
+      border: 1px solid rgba(245,241,232,.25);
+    }
+
+    #status {
+      display: none;
+      max-width: min(90vw, 520px);
+      text-align: center;
+      line-height: 1.3;
+    }
+
     #startButton {
-      appearance: none; border: 1px solid rgba(245,241,232,.55);
-      padding: 7px 12px; background: #000;
-      color: #f5f1e8; font: inherit; letter-spacing: inherit;
+      appearance: none;
+      border: 1px solid rgba(245,241,232,.55);
+      padding: 9px 15px;
+      background: #000;
+      color: #f5f1e8;
+      font: inherit;
+      letter-spacing: inherit;
       cursor: pointer;
+      white-space: nowrap;
+      touch-action: manipulation;
     }
-    #startButton:disabled { opacity: .45; cursor: wait; }
-    #status { display: none; }
+
+    #startButton:disabled {
+      opacity: .45;
+      cursor: wait;
+    }
+
+    /* Camera */
     #cameraFrame {
-      position: absolute; top: 18px; right: 18px;
-      width: min(220px, 28vw); aspect-ratio: 4 / 3;
-      padding: 4px; border: 1px solid #777;
-      background: #000; overflow: hidden;
+      position: fixed;
+      top: max(12px, env(safe-area-inset-top));
+      right: max(12px, env(safe-area-inset-right));
+
+      width: clamp(100px, 20vw, 180px);
+      aspect-ratio: 4 / 3;
+      z-index: 10;
+
+      padding: 4px;
+      border: 1px solid #777;
+      background: #000;
+      overflow: hidden;
     }
+
     #cameraPreview {
-      display: block; width: 100%; height: 100%;
-      object-fit: cover; background: #000;
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      background: #000;
       transform: scaleX(-1);
     }
-    @media (max-width: 600px) {
-      #cameraFrame { top: 12px; right: 12px; width: 30vw; }
+
+    /* Test panel */
+    #testPanel {
+      position: fixed;
+      left: max(12px, env(safe-area-inset-left));
+      top: max(12px, env(safe-area-inset-top));
+      z-index: 30;
+
+      width: min(290px, 40vw);
+      padding: 10px 12px;
+
+      border: 1px solid rgba(245,241,232,.35);
+      background: rgba(0,0,0,.9);
+      color: #f5f1e8;
+
+      font-size: 12px;
+      letter-spacing: .035em;
     }
-    #cameraPlaceholder, .preview, .controls, h1, .intro, .readout, .help { display: none !important; }
+
+    #testPanel h2 {
+      margin: 0 0 8px;
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: .1em;
+    }
+
+    .sliderRow {
+      display: grid;
+      grid-template-columns: 42px 1fr 48px;
+      gap: 7px;
+      align-items: center;
+      margin: 9px 0;
+    }
+
+    .sliderRow input {
+      width: 100%;
+      min-width: 0;
+      accent-color: #f5f1e8;
+      touch-action: pan-x;
+    }
+
+    .sliderValue {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .testToggle {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin: 7px 0;
+      min-height: 24px;
+    }
+
+    .testToggle input {
+      accent-color: #f5f1e8;
+    }
+
+    #testHint {
+      opacity: .6;
+      line-height: 1.35;
+      margin-top: 7px;
+    }
+
+    #cameraPlaceholder,
+    .preview,
+    .controls,
+    h1,
+    .intro,
+    .readout,
+    .help {
+      display: none !important;
+    }
+
+    /* iPad portrait */
+    @media (orientation: portrait) {
+      #testPanel {
+        width: min(270px, 58vw);
+      }
+
+      #cameraFrame {
+        width: clamp(95px, 25vw, 145px);
+      }
+
+      #footer {
+        width: calc(100% - 24px);
+        bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+        padding: 7px 8px;
+        gap: 6px 10px;
+      }
+    }
+
+    /* Smaller screens / phones */
+    @media (max-width: 700px) {
+      #testPanel {
+        width: min(245px, 56vw);
+        padding: 8px 9px;
+      }
+
+      .sliderRow {
+        grid-template-columns: 38px 1fr 42px;
+        gap: 5px;
+        margin: 6px 0;
+      }
+
+      #cameraFrame {
+        width: clamp(85px, 24vw, 130px);
+      }
+    }
+
+    /* Short landscape screens, including iPad landscape */
+    @media (max-height: 600px) {
+      #testPanel {
+        padding: 6px 8px;
+        font-size: 11px;
+      }
+
+      #testPanel h2 {
+        margin-bottom: 4px;
+      }
+
+      .sliderRow {
+        margin: 4px 0;
+      }
+
+      .testToggle {
+        margin: 3px 0;
+        min-height: 20px;
+      }
+
+      #testHint {
+        display: none;
+      }
+
+      #footer {
+        bottom: calc(env(safe-area-inset-bottom, 0px) + 6px);
+        padding: 5px 8px;
+        gap: 5px 8px;
+      }
+
+      #startButton {
+        padding: 6px 10px;
+      }
+    }
+
+    /* Avoid UI overlap on very narrow portrait screens */
+    @media (max-width: 420px) and (orientation: portrait) {
+      #testPanel {
+        width: 54vw;
+      }
+
+      #cameraFrame {
+        width: 24vw;
+      }
+    }
   </style>
 </head>
+
 <body>
-  <div class="stage" id="stage">
+  <div id="stage">
+
     <div id="wordContainer" aria-label="ORCHESTRAVARIABLE">
       <div id="topRow"></div>
       <div id="bottomRow"></div>
     </div>
+
+    <!-- Test panel -->
+    <section id="testPanel" aria-label="临时测试调节">
+      <h2>TEST CONTROLS</h2>
+
+      <div class="sliderRow">
+        <label for="gapSlider">Gap</label>
+        <input id="gapSlider" type="range"
+               min="-160" max="160" step="1" value="0">
+        <span class="sliderValue" id="gapValue">0 px</span>
+      </div>
+
+      <label class="testToggle">
+        <input id="gapOverride" type="checkbox">
+        Override gap
+      </label>
+
+      <div class="sliderRow">
+        <label for="sizeSlider">Size</label>
+        <input id="sizeSlider" type="range"
+               min="40" max="520" step="1" value="220">
+        <span class="sliderValue" id="sizeValue">220 px</span>
+      </div>
+
+      <label class="testToggle">
+        <input id="sizeOverride" type="checkbox">
+        Override size
+      </label>
+
+      <div class="sliderRow">
+        <label for="weightSlider">Weight</label>
+        <input id="weightSlider" type="range"
+               min="0" max="900" step="1" value="0">
+        <span class="sliderValue" id="weightValue">0</span>
+      </div>
+
+      <label class="testToggle">
+        <input id="manualToggle" type="checkbox">
+        Manual weight
+      </label>
+
+      <div id="testHint">
+        Override 可覆盖自动布局；Manual weight 可暂停摄像头字重控制。
+      </div>
+    </section>
+
+    <!-- Camera preview -->
     <div id="cameraFrame" aria-label="摄像头画面">
       <canvas id="cameraPreview" width="320" height="240"></canvas>
     </div>
+
+    <!-- Bottom controls -->
     <div id="footer">
       <span id="weightReadout">wght 0</span>
       <button id="startButton" type="button">开启摄像头</button>
       <span id="status" aria-live="polite"></span>
     </div>
+
     <video id="video" playsinline muted style="display:none"></video>
   </div>
 
@@ -105,7 +403,10 @@
 
   const video = document.querySelector("#video");
   const cameraPreview = document.querySelector("#cameraPreview");
-  const previewContext = cameraPreview.getContext("2d", { willReadFrequently: true });
+  const previewContext = cameraPreview.getContext("2d", {
+    willReadFrequently: true
+  });
+
   const topRow = document.querySelector("#topRow");
   const bottomRow = document.querySelector("#bottomRow");
   const wordContainer = document.querySelector("#wordContainer");
@@ -113,6 +414,18 @@
   const status = document.querySelector("#status");
   const weightReadout = document.querySelector("#weightReadout");
   const startButton = document.querySelector("#startButton");
+
+  const gapSlider = document.querySelector("#gapSlider");
+  const gapValue = document.querySelector("#gapValue");
+  const gapOverride = document.querySelector("#gapOverride");
+
+  const sizeSlider = document.querySelector("#sizeSlider");
+  const sizeValue = document.querySelector("#sizeValue");
+  const sizeOverride = document.querySelector("#sizeOverride");
+
+  const weightSlider = document.querySelector("#weightSlider");
+  const weightValue = document.querySelector("#weightValue");
+  const manualToggle = document.querySelector("#manualToggle");
 
   const topSpans = [];
   const bottomSpans = [];
@@ -145,73 +458,116 @@
   let lastVideoTime = -1;
 
   function updateDOM() {
-    const avgW = currentWeights.reduce((a, b) => a + b, 0) / CHAR_COUNT;
-    
-    // 粗字重时让整体框适当缩小一点，抵消部分笔画膨胀
-    const weightScale = 1 - (avgW / 900) * 0.22; 
+    const avgW =
+      currentWeights.reduce((a, b) => a + b, 0) / CHAR_COUNT;
+
+    // Original weight compensation
+    const weightScale = 1 - (avgW / 900) * 0.22;
 
     const viewportMin = Math.min(window.innerWidth, window.innerHeight);
     const viewportMax = Math.max(window.innerWidth, window.innerHeight);
     const isPortrait = window.innerHeight > window.innerWidth;
+
     const baseMultiplier = isPortrait ? 0.22 : 0.26;
-    
+
     const minAllowedSize = Math.max(36, viewportMin * 0.08);
     const maxAllowedSize = Math.min(600, viewportMax * 0.35);
-    
-    const baseFontSize = Math.max(minAllowedSize, Math.min(maxAllowedSize, window.innerWidth * baseMultiplier));
-    const targetFontSize = baseFontSize * weightScale;
+
+    const baseFontSize = Math.max(
+      minAllowedSize,
+      Math.min(maxAllowedSize, window.innerWidth * baseMultiplier)
+    );
+
+    const targetFontSize = sizeOverride.checked
+      ? Number(sizeSlider.value)
+      : baseFontSize * weightScale;
 
     for (const span of [...topSpans, ...bottomSpans]) {
       span.style.fontSize = `${targetFontSize}px`;
     }
 
     const availableWidth = window.innerWidth * 0.94;
-    const measuredWidth = Math.max(topRow.scrollWidth, bottomRow.scrollWidth);
-    const fitScale = measuredWidth > 0 ? Math.min(1, availableWidth / measuredWidth) : 1;
-    const finalFontSize = targetFontSize * fitScale;
+    const measuredWidth = Math.max(
+      topRow.scrollWidth,
+      bottomRow.scrollWidth
+    );
+
+    const fitScale = measuredWidth > 0
+      ? Math.min(1, availableWidth / measuredWidth)
+      : 1;
+
+    const finalFontSize = sizeOverride.checked
+      ? targetFontSize
+      : targetFontSize * fitScale;
 
     for (const span of [...topSpans, ...bottomSpans]) {
       span.style.fontSize = `${finalFontSize}px`;
     }
 
-    // 【核心修复：动态防重叠行间距】
-    // wght 0 时间距紧密（-0.05em），随着字重变粗线性拉开，wght 900 时拉开到 0.35em 确保 Heavy 绝不重叠
+    // Original automatic spacing
     const minGap = -0.05;
     const maxGap = 0.35;
+
     const gapEm = minGap + (avgW / 900) * (maxGap - minGap);
-    
-    wordContainer.style.gap = `${gapEm * finalFontSize}px`;
+
+    wordContainer.style.gap = gapOverride.checked
+      ? `${Number(gapSlider.value)}px`
+      : `${gapEm * finalFontSize}px`;
 
     for (let i = 0; i < CHAR_COUNT; i++) {
       const w = Math.round(currentWeights[i]);
       const delta = currentXhetDeltas[i];
+
       const bottomXhet = Math.min(100, Math.max(0, 50 + delta));
       const topXhet = 100 - bottomXhet;
+
       topSpans[i].style.fontVariationSettings =
         `"wght" ${w}, "XHET" ${Math.round(topXhet)}, "wdth" 75, "opsz" 72`;
+
       bottomSpans[i].style.fontVariationSettings =
         `"wght" ${w}, "XHET" ${Math.round(bottomXhet)}, "wdth" 75, "opsz" 72`;
     }
+
     weightReadout.textContent = `wght ${Math.round(avgW)}`;
   }
 
   function renderCameraPreview() {
     if (video.readyState < 2) return;
-    previewContext.drawImage(video, 0, 0, cameraPreview.width, cameraPreview.height);
-    const frame = previewContext.getImageData(0, 0, cameraPreview.width, cameraPreview.height);
+
+    previewContext.drawImage(
+      video,
+      0, 0,
+      cameraPreview.width,
+      cameraPreview.height
+    );
+
+    const frame = previewContext.getImageData(
+      0, 0,
+      cameraPreview.width,
+      cameraPreview.height
+    );
+
     const pixels = frame.data;
+
     for (let i = 0; i < pixels.length; i += 4) {
-      const gray = 0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2];
+      const gray =
+        0.299 * pixels[i] +
+        0.587 * pixels[i + 1] +
+        0.114 * pixels[i + 2];
+
       const level = Math.min(4, Math.round(gray / 255 * 4));
       const value = [0, 64, 128, 192, 255][level];
+
       pixels[i] = pixels[i + 1] = pixels[i + 2] = value;
     }
+
     previewContext.putImageData(frame, 0, 0);
   }
 
   async function start() {
     startButton.disabled = true;
     status.textContent = "正在启动…";
+
     try {
       const vision = await FilesetResolver.forVisionTasks(
         "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm"
@@ -219,30 +575,42 @@
 
       landmarker = await HandLandmarker.createFromOptions(vision, {
         baseOptions: {
-          modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+          modelAssetPath:
+            "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
           delegate: "GPU"
         },
         runningMode: "VIDEO",
         numHands: 4
       });
 
-      status.textContent = "正在请求摄像头权限……";
+      status.textContent = "正在请求摄像头权限…";
+
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 960 } },
+        video: {
+          facingMode: "user",
+          width: { ideal: 1280 },
+          height: { ideal: 960 }
+        },
         audio: false
       });
+
       video.srcObject = stream;
       await video.play();
 
       status.textContent = "请将一只手横向摊开";
       startButton.textContent = "终止摄像";
       startButton.disabled = false;
+
       updateDOM();
       loop();
+
     } catch (error) {
       console.error(error);
-      status.textContent = "启动失败：" + (error.message || error) +
+
+      status.textContent =
+        "启动失败：" + (error.message || error) +
         "。请检查网络、摄像头权限，并确认网页是通过 localhost 或 HTTPS 打开的。";
+
       startButton.textContent = "开启摄像头";
       startButton.disabled = false;
     }
@@ -253,12 +621,20 @@
       animationId = requestAnimationFrame(loop);
       return;
     }
+
     if (video.currentTime !== lastVideoTime) {
       lastVideoTime = video.currentTime;
+
       renderCameraPreview();
-      const results = landmarker.detectForVideo(video, performance.now());
+
+      const results = landmarker.detectForVideo(
+        video,
+        performance.now()
+      );
+
       updateFromResults(results);
     }
+
     animationId = requestAnimationFrame(loop);
   }
 
@@ -271,42 +647,79 @@
     const middleMcp = points[9];
     const middleTip = points[12];
     const indexTip = points[8];
-    const palmScale = Math.max(distance(wrist, middleMcp), 0.001);
+
+    const palmScale = Math.max(
+      distance(wrist, middleMcp),
+      0.001
+    );
 
     const tips = [4, 8, 12, 16, 20];
-    const reaches = tips.map(idx => distance(points[idx], wrist) / palmScale);
-    const openness = reaches.reduce((a, b) => a + b, 0) / reaches.length;
 
-    const indexR = reaches[1], middleR = reaches[2], ringR = reaches[3], pinkyR = reaches[4];
-    const fingersCurled = indexR < 1.22 && middleR < 1.22 && ringR < 1.22 && pinkyR < 1.22;
+    const reaches = tips.map(idx =>
+      distance(points[idx], wrist) / palmScale
+    );
+
+    const openness =
+      reaches.reduce((a, b) => a + b, 0) / reaches.length;
+
+    const indexR = reaches[1];
+    const middleR = reaches[2];
+    const ringR = reaches[3];
+    const pinkyR = reaches[4];
+
+    const fingersCurled =
+      indexR < 1.22 &&
+      middleR < 1.22 &&
+      ringR < 1.22 &&
+      pinkyR < 1.22;
+
     const isFist = openness < 1.22 && fingersCurled;
 
     const axisX = middleMcp.x - wrist.x;
     const axisY = middleMcp.y - wrist.y;
+
     const axisLen = Math.hypot(axisX, axisY) || 0.001;
+
     const verticalRatio = Math.abs(axisY) / axisLen;
     const isNearlyHorizontal = verticalRatio < 0.32;
+
     const isOpenPalm = openness > 1.68;
 
     const ringTip = points[16];
+
     const tipYSpread = Math.max(
       Math.abs(indexTip.y - middleTip.y),
       Math.abs(ringTip.y - middleTip.y),
       Math.abs(indexTip.y - ringTip.y)
     );
-    const fingersAligned = tipYSpread < 0.07;
-    const isHorizontalPalm = isNearlyHorizontal && isOpenPalm && fingersAligned;
 
-    const mirroredX = Math.max(0, Math.min(1, 1 - indexTip.x));
+    const fingersAligned = tipYSpread < 0.07;
+
+    const isHorizontalPalm =
+      isNearlyHorizontal &&
+      isOpenPalm &&
+      fingersAligned;
+
+    const mirroredX = Math.max(
+      0,
+      Math.min(1, 1 - indexTip.x)
+    );
+
     const letterPos = mirroredX * (CHAR_COUNT - 1);
 
-    const normalizedHeight = Math.max(0, Math.min(1, (0.85 - indexTip.y) / 0.7));
+    const normalizedHeight = Math.max(
+      0,
+      Math.min(1, (0.85 - indexTip.y) / 0.7)
+    );
+
     const xhetDelta = (normalizedHeight - 0.5) * 150;
     const weightFromY = Math.round(normalizedHeight * 900);
 
     const xs = points.map(p => p.x);
     const ys = points.map(p => p.y);
-    const apparentArea = (Math.max(...xs) - Math.min(...xs)) *
+
+    const apparentArea =
+      (Math.max(...xs) - Math.min(...xs)) *
       (Math.max(...ys) - Math.min(...ys));
 
     return {
@@ -323,15 +736,31 @@
   }
 
   function updateFromResults(results) {
+    if (manualToggle.checked) {
+      const manualW = Number(weightSlider.value);
+      currentWeights.fill(manualW);
+
+      updateDOM();
+
+      status.textContent =
+        "手动字重测试中 · 摄像头字重控制已暂停";
+
+      return;
+    }
+
     const rawHands = results.landmarks || [];
 
     if (rawHands.length === 0) {
       palmStableFrames = 0;
+
       for (let i = 0; i < CHAR_COUNT; i++) {
-        currentXhetDeltas[i] += (0 - currentXhetDeltas[i]) * 0.2;
+        currentXhetDeltas[i] +=
+          (0 - currentXhetDeltas[i]) * 0.2;
       }
+
       updateDOM();
       status.textContent = "未检测到手 · 字重保持";
+
       return;
     }
 
@@ -348,8 +777,11 @@
       leftHand = parsed[0];
       rightHand = parsed[parsed.length - 1];
     } else {
-      if (parsed[0].mirroredX < 0.5) leftHand = parsed[0];
-      else rightHand = parsed[0];
+      if (parsed[0].mirroredX < 0.5) {
+        leftHand = parsed[0];
+      } else {
+        rightHand = parsed[0];
+      }
     }
 
     const freezeLeft = leftHand ? leftHand.isFist : false;
@@ -373,26 +805,45 @@
       if (parsed.length === 1) {
         const h = parsed[0];
         const spread = 2.2;
+
         for (let i = 0; i < CHAR_COUNT; i++) {
           const dist = Math.abs(i - h.letterPos);
-          const factor = Math.exp(-(dist * dist) / (2 * spread * spread));
+
+          const factor = Math.exp(
+            -(dist * dist) / (2 * spread * spread)
+          );
+
           targetDeltas[i] = h.xhetDelta * factor;
         }
+
       } else {
         const lH = parsed[0];
         const rH = parsed[parsed.length - 1];
-        const span = Math.max(rH.letterPos - lH.letterPos, 0.001);
+
+        const span = Math.max(
+          rH.letterPos - lH.letterPos,
+          0.001
+        );
 
         for (let i = 0; i < CHAR_COUNT; i++) {
           if (i <= lH.letterPos) {
             const dist = lH.letterPos - i;
-            targetDeltas[i] = lH.xhetDelta * Math.exp(-(dist * dist) / 4);
+
+            targetDeltas[i] =
+              lH.xhetDelta * Math.exp(-(dist * dist) / 4);
+
           } else if (i >= rH.letterPos) {
             const dist = i - rH.letterPos;
-            targetDeltas[i] = rH.xhetDelta * Math.exp(-(dist * dist) / 4);
+
+            targetDeltas[i] =
+              rH.xhetDelta * Math.exp(-(dist * dist) / 4);
+
           } else {
             const t = (i - lH.letterPos) / span;
-            targetDeltas[i] = lH.xhetDelta + t * (rH.xhetDelta - lH.xhetDelta);
+
+            targetDeltas[i] =
+              lH.xhetDelta +
+              t * (rH.xhetDelta - lH.xhetDelta);
           }
         }
       }
@@ -400,24 +851,30 @@
       for (let i = 0; i < CHAR_COUNT; i++) {
         const isLeftSide = i < SPLIT_INDEX;
         const isFrozen = isLeftSide ? freezeLeft : freezeRight;
+
         if (isFrozen) continue;
-        currentXhetDeltas[i] += (targetDeltas[i] - currentXhetDeltas[i]) * 0.28;
+
+        currentXhetDeltas[i] +=
+          (targetDeltas[i] - currentXhetDeltas[i]) * 0.28;
       }
     }
 
     if (weightHand && palmStableFrames >= PALM_STABLE_NEED) {
       const targetW = weightHand.weightFromY;
+
       for (let i = 0; i < CHAR_COUNT; i++) {
-        currentWeights[i] += (targetW - currentWeights[i]) * 0.12;
+        currentWeights[i] +=
+          (targetW - currentWeights[i]) * 0.12;
       }
     }
 
     updateDOM();
 
     if (weightHand) {
-      status.textContent = palmStableFrames >= PALM_STABLE_NEED
-        ? "调整字重中 · XHET 已锁定"
-        : "摊开手掌以调整字重";
+      status.textContent =
+        palmStableFrames >= PALM_STABLE_NEED
+          ? "调整字重中 · XHET 已锁定"
+          : "摊开手掌以调整字重";
     } else {
       status.textContent = "请将一只手横向摊开";
     }
@@ -428,33 +885,77 @@
       stream.getTracks().forEach(track => track.stop());
       stream = null;
     }
+
     video.srcObject = null;
-    previewContext.clearRect(0, 0, cameraPreview.width, cameraPreview.height);
+
+    previewContext.clearRect(
+      0, 0,
+      cameraPreview.width,
+      cameraPreview.height
+    );
   }
 
   function stop() {
-    if (animationId) cancelAnimationFrame(animationId);
+    if (animationId) {
+      cancelAnimationFrame(animationId);
+    }
+
     animationId = null;
+
     stopCameraOnly();
+
     if (landmarker) {
       landmarker.close();
       landmarker = null;
     }
+
     currentWeights.fill(0);
     currentXhetDeltas.fill(0);
     palmStableFrames = 0;
+
     updateDOM();
+
     startButton.textContent = "开启摄像头";
     startButton.disabled = false;
+
     status.textContent = "已停止";
   }
 
-  startButton.addEventListener("click", () => {
-    if (stream) stop();
-    else start();
+  function updateTestLabels() {
+    gapValue.textContent = `${gapSlider.value} px`;
+    sizeValue.textContent = `${sizeSlider.value} px`;
+    weightValue.textContent = weightSlider.value;
+
+    if (manualToggle.checked) {
+      currentWeights.fill(Number(weightSlider.value));
+    }
+
+    updateDOM();
+  }
+
+  [gapSlider, sizeSlider, weightSlider].forEach(el => {
+    el.addEventListener("input", updateTestLabels);
   });
+
+  [gapOverride, sizeOverride, manualToggle].forEach(el => {
+    el.addEventListener("change", updateTestLabels);
+  });
+
+  startButton.addEventListener("click", () => {
+    if (stream) {
+      stop();
+    } else {
+      start();
+    }
+  });
+
   window.addEventListener("beforeunload", stopCameraOnly);
   window.addEventListener("resize", updateDOM);
+
+  window.addEventListener("orientationchange", () => {
+    setTimeout(updateDOM, 100);
+  });
+
   updateDOM();
 </script>
 </body>
