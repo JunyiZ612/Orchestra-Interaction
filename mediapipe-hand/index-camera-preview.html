@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ORCHESTRA VARIABLE · 正常不重叠版</title>
+  <style>
+    @font-face {
+      font-family: "Orchestra Variable Top";
+      src: url("OrchestraVariableTop-VariableVF.ttf") format("truetype");
+      font-weight: 0 900;
+    }
+    @font-face {
+      font-family: "Orchestra Variable Bottom";
+      src: url("OrchestraVariableBottom-VariableVF.ttf") format("truetype");
+      font-weight: 0 900;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%; margin: 0; overflow: hidden;
+      background: #000; color: #f5f1e8;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    #stage {
+      position: fixed; inset: 0; width: 100vw; height: 100vh;
+      min-height: 0; overflow: hidden; background: #000;
+    }
+    #wordContainer {
+      position: absolute; left: 50%; top: 50%;
+      transform: translate(-50%, -50%);
+      width: fit-content; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      /* 改用安全的微小正向间距，保证初始状态绝对不重叠 */
+      gap: 0.05em; 
+      user-select: none; pointer-events: none;
+      transition: gap 0.15s ease;
+    }
+    #topRow, #bottomRow {
+      display: flex; justify-content: center; white-space: nowrap;
+      letter-spacing: 0.02em; 
+      /* 恢复标准的 1，让浏览器按照正常的字体设计框渲染，绝不互相压盖 */
+      line-height: 1; 
+    }
+    .top-char, .bottom-char {
+      font-size: 280px; color: #f5f1e8;
+      display: inline-block; will-change: font-variation-settings;
+    }
+    .top-char { font-family: "Orchestra Variable Top", serif; }
+    .bottom-char { font-family: "Orchestra Variable Bottom", serif; }
+    #footer {
+      position: absolute; left: 0; right: 0; bottom: max(16px, env(safe-area-inset-bottom));
+      display: flex; align-items: center; justify-content: center; gap: 14px;
+      color: rgba(245,241,232,.58); font-size: 11px; letter-spacing: .08em;
+      font-variant-numeric: tabular-nums;
+    }
+    #startButton {
+      appearance: none; border: 1px solid rgba(245,241,232,.55);
+      padding: 7px 12px; background: #000;
+      color: #f5f1e8; font: inherit; letter-spacing: inherit;
+      cursor: pointer;
+    }
+    #startButton:disabled { opacity: .45; cursor: wait; }
+    #status { display: none; }
+    #cameraFrame {
+      position: absolute; top: 18px; right: 18px;
+      width: min(220px, 28vw); aspect-ratio: 4 / 3;
+      padding: 4px; border: 1px solid #777;
+      background: #000; overflow: hidden;
+    }
+    #cameraPreview {
+      display: block; width: 100%; height: 100%;
+      object-fit: cover; background: #000;
+      transform: scaleX(-1);
+    }
+    @media (max-width: 600px) {
+      #cameraFrame { top: 12px; right: 12px; width: 30vw; }
+    }
+    #cameraPlaceholder, .preview, .controls, h1, .intro, .readout, .help { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="stage" id="stage">
+    <div id="wordContainer" aria-label="ORCHESTRAVARIABLE">
+      <div id="topRow"></div>
+      <div id="bottomRow"></div>
+    </div>
+    <div id="cameraFrame" aria-label="摄像头画面">
+      <canvas id="cameraPreview" width="320" height="240"></canvas>
+    </div>
+    <div id="footer">
+      <span id="weightReadout">wght 0</span>
+      <button id="startButton" type="button">开启摄像头</button>
+      <span id="status" aria-live="polite"></span>
+    </div>
+    <video id="video" playsinline muted style="display:none"></video>
+  </div>
+
+<script type="module">
+  import {
+    FilesetResolver,
+    HandLandmarker
+  } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.mjs";
+
+  const TEXT = "ORCHESTRAVARIABLE";
+  const CHAR_COUNT = TEXT.length;
+  const SPLIT_INDEX = 9;
+
+  const video = document.querySelector("#video");
+  const cameraPreview = document.querySelector("#cameraPreview");
+  const previewContext = cameraPreview.getContext("2d", { willReadFrequently: true });
+  const topRow = document.querySelector("#topRow");
+  const bottomRow = document.querySelector("#bottomRow");
+  const wordContainer = document.querySelector("#wordContainer");
+  const stage = document.querySelector("#stage");
+  const status = document.querySelector("#status");
+  const weightReadout = document.querySelector("#weightReadout");
+  const startButton = document.querySelector("#startButton");
+
+  const topSpans = [];
+  const bottomSpans = [];
+
+  for (let i = 0; i < CHAR_COUNT; i++) {
+    const ch = TEXT[i];
+
+    const tSpan = document.createElement("span");
+    tSpan.className = "top-char";
+    tSpan.textContent = ch;
+    topRow.appendChild(tSpan);
+    topSpans.push(tSpan);
+
+    const bSpan = document.createElement("span");
+    bSpan.className = "bottom-char";
+    bSpan.textContent = ch;
+    bottomRow.appendChild(bSpan);
+    bottomSpans.push(bSpan);
+  }
+
+  const currentWeights = new Array(CHAR_COUNT).fill(0);
+  const currentXhetDeltas = new Array(CHAR_COUNT).fill(0);
+
+  let palmStableFrames = 0;
+  const PALM_STABLE_NEED = 6;
+
+  let landmarker = null;
+  let stream = null;
+  let animationId = null;
+  let lastVideoTime = -1;
+
+  function updateDOM() {
+    const avgW = currentWeights.reduce((a, b) => a + b, 0) / CHAR_COUNT;
+    const weightScale = 1 - (avgW / 900) * 0.2; 
+
+    const viewportMin = Math.min(window.innerWidth, window.innerHeight);
+    const viewportMax = Math.max(window.innerWidth, window.innerHeight);
+    const isPortrait = window.innerHeight > window.innerWidth;
+    const baseMultiplier = isPortrait ? 0.22 : 0.26;
+    
+    const minAllowedSize = Math.max(36, viewportMin * 0.08);
+    const maxAllowedSize = Math.min(600, viewportMax * 0.35);
+    
+    const baseFontSize = Math.max(minAllowedSize, Math.min(maxAllowedSize, window.innerWidth * baseMultiplier));
+    const targetFontSize = baseFontSize * weightScale;
+
+    for (const span of [...topSpans, ...bottomSpans]) {
+      span.style.fontSize = `${targetFontSize}px`;
+    }
+
+    const availableWidth = window.innerWidth * 0.94;
+    const measuredWidth = Math.max(topRow.scrollWidth, bottomRow.scrollWidth);
+    const fitScale = measuredWidth > 0 ? Math.min(1, availableWidth / measuredWidth) : 1;
+    const finalFontSize = targetFontSize * fitScale;
+
+    for (const span of [...topSpans, ...bottomSpans]) {
+      span.style.fontSize = `${finalFontSize}px`;
+    }
+
+    // 安全的间距计算：以 0.05em 为基础，随字重轻微增加一点点
+    const baseGapEm = 0.05;
+    const weightGapAdd = (avgW / 900) * 0.1;
+    const gapEm = baseGapEm + weightGapAdd;
+    
+    wordContainer.style.gap = `${gapEm * finalFontSize}px`;
+
+    for (let i = 0; i < CHAR_COUNT; i++) {
+      const w = Math.round(currentWeights[i]);
+      const delta = currentXhetDeltas[i];
+      const bottomXhet = Math.min(100, Math.max(0, 50 + delta));
+      const topXhet = 100 - bottomXhet;
+      topSpans[i].style.fontVariationSettings =
+        `"wght" ${w}, "XHET" ${Math.round(topXhet)}, "wdth" 75, "opsz" 72`;
+      bottomSpans[i].style.fontVariationSettings =
+        `"wght" ${w}, "XHET" ${Math.round(bottomXhet)}, "wdth" 75, "opsz" 72`;
+    }
+    weightReadout.textContent = `wght ${Math.round(avgW)}`;
+  }
+
+  function renderCameraPreview() {
+    if (video.readyState < 2) return;
+    previewContext.drawImage(video, 0, 0, cameraPreview.width, cameraPreview.height);
+    const frame = previewContext.getImageData(0, 0, cameraPreview.width, cameraPreview.height);
+    const pixels = frame.data;
+    for (let i = 0; i < pixels.length; i += 4) {
+      const gray = 0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2];
+      const level = Math.min(4, Math.round(gray / 255 * 4));
+      const value = [0, 64, 128, 192, 255][level];
+      pixels[i] = pixels[i + 1] = pixels[i + 2] = value;
+    }
+    previewContext.putImageData(frame, 0, 0);
+  }
+
+  async function start() {
+    startButton.disabled = true;
+    status.textContent = "正在启动…";
+    try {
+      const vision = await FilesetResolver.forVisionTasks(
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm"
+      );
+
+      landmarker = await HandLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+          delegate: "GPU"
+        },
+        runningMode: "VIDEO",
+        numHands: 4
+      });
+
+      status.textContent = "正在请求摄像头权限……";
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 960 } },
+        audio: false
+      });
+      video.srcObject = stream;
+      await video.play();
+
+      status.textContent = "请将一只手横向摊开";
+      startButton.textContent = "终止摄像";
+      startButton.disabled = false;
+      updateDOM();
+      loop();
+    } catch (error) {
+      console.error(error);
+      status.textContent = "启动失败：" + (error.message || error) +
+        "。请检查网络、摄像头权限，并确认网页是通过 localhost 或 HTTPS 打开的。";
+      startButton.textContent = "开启摄像头";
+      startButton.disabled = false;
+    }
+  }
+
+  function loop() {
+    if (!landmarker || video.readyState < 2) {
+      animationId = requestAnimationFrame(loop);
+      return;
+    }
+    if (video.currentTime !== lastVideoTime) {
+      lastVideoTime = video.currentTime;
+      renderCameraPreview();
+      const results = landmarker.detectForVideo(video, performance.now());
+      updateFromResults(results);
+    }
+    animationId = requestAnimationFrame(loop);
+  }
+
+  function distance(a, b) {
+    return Math.hypot(a.x - b.x, a.y - b.y);
+  }
+
+  function parseHand(points) {
+    const wrist = points[0];
+    const middleMcp = points[9];
+    const middleTip = points[12];
+    const indexTip = points[8];
+    const palmScale = Math.max(distance(wrist, middleMcp), 0.001);
+
+    const tips = [4, 8, 12, 16, 20];
+    const reaches = tips.map(idx => distance(points[idx], wrist) / palmScale);
+    const openness = reaches.reduce((a, b) => a + b, 0) / reaches.length;
+
+    const indexR = reaches[1], middleR = reaches[2], ringR = reaches[3], pinkyR = reaches[4];
+    const fingersCurled = indexR < 1.22 && middleR < 1.22 && ringR < 1.22 && pinkyR < 1.22;
+    const isFist = openness < 1.22 && fingersCurled;
+
+    const axisX = middleMcp.x - wrist.x;
+    const axisY = middleMcp.y - wrist.y;
+    const axisLen = Math.hypot(axisX, axisY) || 0.001;
+    const verticalRatio = Math.abs(axisY) / axisLen;
+    const isNearlyHorizontal = verticalRatio < 0.32;
+    const isOpenPalm = openness > 1.68;
+
+    const ringTip = points[16];
+    const tipYSpread = Math.max(
+      Math.abs(indexTip.y - middleTip.y),
+      Math.abs(ringTip.y - middleTip.y),
+      Math.abs(indexTip.y - ringTip.y)
+    );
+    const fingersAligned = tipYSpread < 0.07;
+    const isHorizontalPalm = isNearlyHorizontal && isOpenPalm && fingersAligned;
+
+    const mirroredX = Math.max(0, Math.min(1, 1 - indexTip.x));
+    const letterPos = mirroredX * (CHAR_COUNT - 1);
+
+    const normalizedHeight = Math.max(0, Math.min(1, (0.85 - indexTip.y) / 0.7));
+    const xhetDelta = (normalizedHeight - 0.5) * 150;
+    const weightFromY = Math.round(normalizedHeight * 900);
+
+    const xs = points.map(p => p.x);
+    const ys = points.map(p => p.y);
+    const apparentArea = (Math.max(...xs) - Math.min(...xs)) *
+      (Math.max(...ys) - Math.min(...ys));
+
+    return {
+      mirroredX,
+      apparentArea,
+      letterPos,
+      xhetDelta,
+      isFist,
+      isHorizontalPalm,
+      weightFromY,
+      openness,
+      verticalRatio
+    };
+  }
+
+  function updateFromResults(results) {
+    const rawHands = results.landmarks || [];
+
+    if (rawHands.length === 0) {
+      palmStableFrames = 0;
+      for (let i = 0; i < CHAR_COUNT; i++) {
+        currentXhetDeltas[i] += (0 - currentXhetDeltas[i]) * 0.2;
+      }
+      updateDOM();
+      status.textContent = "未检测到手 · 字重保持";
+      return;
+    }
+
+    const parsed = rawHands
+      .map(parseHand)
+      .sort((a, b) => b.apparentArea - a.apparentArea)
+      .slice(0, 2)
+      .sort((a, b) => a.mirroredX - b.mirroredX);
+
+    let leftHand = null;
+    let rightHand = null;
+
+    if (parsed.length >= 2) {
+      leftHand = parsed[0];
+      rightHand = parsed[parsed.length - 1];
+    } else {
+      if (parsed[0].mirroredX < 0.5) leftHand = parsed[0];
+      else rightHand = parsed[0];
+    }
+
+    const freezeLeft = leftHand ? leftHand.isFist : false;
+    const freezeRight = rightHand ? rightHand.isFist : false;
+
+    const weightHand = parsed
+      .filter(h => h.isHorizontalPalm)
+      .sort((a, b) => b.apparentArea - a.apparentArea)[0];
+
+    if (weightHand) {
+      palmStableFrames++;
+    } else {
+      palmStableFrames = 0;
+    }
+
+    const isAdjustingWeight = !!weightHand;
+
+    if (!isAdjustingWeight) {
+      const targetDeltas = new Array(CHAR_COUNT).fill(0);
+
+      if (parsed.length === 1) {
+        const h = parsed[0];
+        const spread = 2.2;
+        for (let i = 0; i < CHAR_COUNT; i++) {
+          const dist = Math.abs(i - h.letterPos);
+          const factor = Math.exp(-(dist * dist) / (2 * spread * spread));
+          targetDeltas[i] = h.xhetDelta * factor;
+        }
+      } else {
+        const lH = parsed[0];
+        const rH = parsed[parsed.length - 1];
+        const span = Math.max(rH.letterPos - lH.letterPos, 0.001);
+
+        for (let i = 0; i < CHAR_COUNT; i++) {
+          if (i <= lH.letterPos) {
+            const dist = lH.letterPos - i;
+            targetDeltas[i] = lH.xhetDelta * Math.exp(-(dist * dist) / 4);
+          } else if (i >= rH.letterPos) {
+            const dist = i - rH.letterPos;
+            targetDeltas[i] = rH.xhetDelta * Math.exp(-(dist * dist) / 4);
+          } else {
+            const t = (i - lH.letterPos) / span;
+            targetDeltas[i] = lH.xhetDelta + t * (rH.xhetDelta - lH.xhetDelta);
+          }
+        }
+      }
+
+      for (let i = 0; i < CHAR_COUNT; i++) {
+        const isLeftSide = i < SPLIT_INDEX;
+        const isFrozen = isLeftSide ? freezeLeft : freezeRight;
+        if (isFrozen) continue;
+        currentXhetDeltas[i] += (targetDeltas[i] - currentXhetDeltas[i]) * 0.28;
+      }
+    }
+
+    if (weightHand && palmStableFrames >= PALM_STABLE_NEED) {
+      const targetW = weightHand.weightFromY;
+      for (let i = 0; i < CHAR_COUNT; i++) {
+        currentWeights[i] += (targetW - currentWeights[i]) * 0.12;
+      }
+    }
+
+    updateDOM();
+
+    if (weightHand) {
+      status.textContent = palmStableFrames >= PALM_STABLE_NEED
+        ? "调整字重中 · XHET 已锁定"
+        : "摊开手掌以调整字重";
+    } else {
+      status.textContent = "请将一只手横向摊开";
+    }
+  }
+
+  function stopCameraOnly() {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      stream = null;
+    }
+    video.srcObject = null;
+    previewContext.clearRect(0, 0, cameraPreview.width, cameraPreview.height);
+  }
+
+  function stop() {
+    if (animationId) cancelAnimationFrame(animationId);
+    animationId = null;
+    stopCameraOnly();
+    if (landmarker) {
+      landmarker.close();
+      landmarker = null;
+    }
+    currentWeights.fill(0);
+    currentXhetDeltas.fill(0);
+    palmStableFrames = 0;
+    updateDOM();
+    startButton.textContent = "开启摄像头";
+    startButton.disabled = false;
+    status.textContent = "已停止";
+  }
+
+  startButton.addEventListener("click", () => {
+    if (stream) stop();
+    else start();
+  });
+  window.addEventListener("beforeunload", stopCameraOnly);
+  window.addEventListener("resize", updateDOM);
+  updateDOM();
+</script>
+</body>
+</html>
