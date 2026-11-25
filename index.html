@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>ORCHESTRA VARIABLE · 手势可变字体</title>
+  <title>ORCHESTRA VARIABLE</title>
   <style>
     @font-face {
       font-family: "Orchestra Variable Top";
@@ -178,13 +178,13 @@
   <div class="stage" id="stage">
     <div id="debugPanel" class="collapsed">
       <div class="debug-header">
-        <span class="debug-title">参数微调</span>
+        <span class="debug-title">设置</span>
         <button id="toggleDebugBtn" type="button">展开</button>
       </div>
       <div class="debug-body">
         <div class="slider-row">
           <div class="slider-label">
-            <span>字重 (wght)</span>
+            <span>字重（WGHT）</span>
             <span id="weightVal" class="slider-val">0</span>
           </div>
           <input id="weightSlider" type="range" min="0" max="900" step="1" value="0">
@@ -200,12 +200,12 @@
 
 
         <label class="toggle-row" for="animationToggle">
-          <span>开启高度动画</span>
+          <span>开启动画</span>
           <input id="animationToggle" type="checkbox">
         </label>
 
         <label class="toggle-row" for="gestureWeightToggle">
-          <span>手势调整字重</span>
+          <span>字重感应</span>
           <input id="gestureWeightToggle" type="checkbox">
         </label>
       </div>
