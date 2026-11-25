@@ -272,24 +272,33 @@
   const CHAR_COUNT = TEXT.length;
   const SPLIT_INDEX = 9;
 
-  // 标定锚点：最细 (wght=0) -> 360px / gap 0px；最粗 (wght=900) -> 140px / gap 55px
+  // 标定锚点：
+  // wght 0   → 字号 360 / 间距 0
+  // wght 500 → 间距 64
+  // wght 900 → 字号 170 / 间距 100
   const MIN_FONT_SIZE = 360;
-  const MAX_FONT_SIZE = 140;
+  const MAX_FONT_SIZE = 170;
   const MIN_GAP_PX = 0;
-  const MAX_GAP_PX = 55;
+  const MID_WGHT = 500;
+  const MID_GAP_PX = 64;
+  const MAX_GAP_PX = 100;
 
   // 上下 XHET 起始点统一为 50（总和恒为 100）
   const BASE_XHET = 50;
   const TOTAL_XHET = 100;
 
-  // 抗抖与降敏参数（同时抑制字重与 XHET 高低微抖）
-  const WEIGHT_DEADZONE = 25;       // 字重变化小于 25 不触发更新
-  const WEIGHT_STEP_LIMIT = 24;     // 单帧字重最大步进
-  const INDEX_Y_DEADZONE = 0.025;   // 指尖垂直移动小于画面 2.5% 时锁住高度坐标
-  const INDEX_X_DEADZONE = 0.015;   // 指尖水平移动小于画面 1.5% 时锁住水平坐标
-  const XHET_DEADZONE = 8;          // 单个字母 XHET 变化小于 8 不触发更新
-  const XHET_STEP_QUANT = 5;        // XHET 按 5 为步长对齐，杜绝 1~2 刻度微颤
-  const PALM_STABLE_NEED = 8;       // 手掌横向摊开需连续稳定帧数
+  // ---------- 响应速度优化后的抗抖参数 ----------
+  // 之前太重导致「跟手慢 + 一卡一卡」，现已放宽
+  const WEIGHT_DEADZONE = 10;        // 原 25 → 更灵敏
+  const WEIGHT_STEP_LIMIT = 55;      // 原 24 → 允许更大步进，减少「爬坡感」
+  const INDEX_Y_DEADZONE = 0.010;    // 原 0.025
+  const INDEX_X_DEADZONE = 0.007;    // 原 0.015
+  const XHET_DEADZONE = 3;           // 原 8
+  const XHET_STEP_QUANT = 2;         // 原 5，更连续
+  const PALM_STABLE_NEED = 3;        // 原 8，更快进入字重调节
+
+  // 平滑系数：越大越跟手（0.35 太粘，0.55~0.7 更自然）
+  const SMOOTH_FACTOR = 0.58;
 
   const video = document.querySelector("#video");
   const cameraPreview = document.querySelector("#cameraPreview");
@@ -341,11 +350,24 @@
   let stream = null;
   let animationId = null;
   let lastVideoTime = -1;
+  let lastDetectTime = 0;
+  // 限帧：约 28–30fps 推理，减轻主线程压力，同时保持跟手感
+  const DETECT_INTERVAL_MS = 33;
 
   function syncLinearMetricsFromWeight(wght) {
     const t = Math.max(0, Math.min(1, wght / 900));
     const linearSize = Math.round(MIN_FONT_SIZE + (MAX_FONT_SIZE - MIN_FONT_SIZE) * t);
-    const linearGap = Math.round(MIN_GAP_PX + (MAX_GAP_PX - MIN_GAP_PX) * t);
+
+    // 间距分段线性：0→500 对应 0→64，500→900 对应 64→100
+    let linearGap;
+    if (wght <= MID_WGHT) {
+      const tMid = wght / MID_WGHT;
+      linearGap = Math.round(MIN_GAP_PX + (MID_GAP_PX - MIN_GAP_PX) * tMid);
+    } else {
+      const tHigh = (wght - MID_WGHT) / (900 - MID_WGHT);
+      linearGap = Math.round(MID_GAP_PX + (MAX_GAP_PX - MID_GAP_PX) * tHigh);
+    }
+
     sizeSlider.value = String(linearSize);
     gapSlider.value = String(linearGap);
   }
@@ -403,6 +425,7 @@
 
   function renderCameraPreview() {
     if (video.readyState < 2) return;
+    // 预览降频，减轻负担
     if (Math.round(video.currentTime * 30) % 2 !== 0) return;
     previewContext.drawImage(video, 0, 0, cameraPreview.width, cameraPreview.height);
   }
@@ -453,11 +476,15 @@
   }
 
   function loop() {
+    const now = performance.now();
     if (video.readyState >= 2 && video.currentTime !== lastVideoTime) {
       lastVideoTime = video.currentTime;
       renderCameraPreview();
-      if (landmarker) {
-        const results = landmarker.detectForVideo(video, performance.now());
+
+      // 限帧推理：降低主线程压力，同时保持流畅跟手
+      if (landmarker && (now - lastDetectTime >= DETECT_INTERVAL_MS)) {
+        lastDetectTime = now;
+        const results = landmarker.detectForVideo(video, now);
         updateFromResults(results);
       }
     }
@@ -475,7 +502,7 @@
     const indexTip = points[8];
     const palmScale = Math.max(distance(wrist, middleMcp), 0.001);
 
-    // 源头死区 + 滤波：小幅抖动直接锁住坐标，不再往下游传导
+    // 更快的平滑：死区缩小 + 更高平滑系数，减少「粘滞」
     if (smoothedIndexX === null) {
       smoothedIndexX = indexTip.x;
       smoothedIndexY = indexTip.y;
@@ -483,10 +510,10 @@
       const dx = indexTip.x - smoothedIndexX;
       const dy = indexTip.y - smoothedIndexY;
       if (Math.abs(dx) > INDEX_X_DEADZONE) {
-        smoothedIndexX += dx * 0.35;
+        smoothedIndexX += dx * SMOOTH_FACTOR;
       }
       if (Math.abs(dy) > INDEX_Y_DEADZONE) {
-        smoothedIndexY += dy * 0.35;
+        smoothedIndexY += dy * SMOOTH_FACTOR;
       }
     }
 
@@ -525,7 +552,7 @@
 
     const normalizedHeight = Math.max(0, Math.min(1, (0.85 - smoothedIndexY) / 0.7));
     const rawDelta = (normalizedHeight - 0.5) * 150;
-    // 量化成 5 的倍数，彻底过滤高低微抖
+    // 量化步长缩小，高低变化更连续
     const xhetDelta = Math.round(rawDelta / XHET_STEP_QUANT) * XHET_STEP_QUANT;
     const weightFromY = Math.round(normalizedHeight * 900);
 
@@ -648,6 +675,7 @@
       const diff = weightHand.weightFromY - currentAvgW;
 
       if (Math.abs(diff) >= WEIGHT_DEADZONE) {
+        // 步进更大，响应更快，减少「缓慢爬升」感
         const step = Math.sign(diff) * Math.min(Math.abs(diff), WEIGHT_STEP_LIMIT);
         const nextW = Math.max(0, Math.min(900, Math.round(currentAvgW + step)));
         if (Math.abs(nextW - currentAvgW) >= 1) {
@@ -694,6 +722,7 @@
     currentWeights.fill(0);
     currentXhetDeltas.fill(0);
     palmStableFrames = 0;
+    lastDetectTime = 0;
     syncLinearMetricsFromWeight(0);
     updateDOM();
     startButton.textContent = "开启摄像头";
