@@ -50,22 +50,16 @@
     /* 纯黑白、默认收起的精简调试面板 */
     #debugPanel {
       position: absolute;
-      top: calc(max(16px, env(safe-area-inset-top)) + 6px);
-      left: calc(max(16px, env(safe-area-inset-left)) + 6px);
-      width: min(290px, calc(100vw - 260px));
-      max-width: 300px;
+      top: calc(max(14px, env(safe-area-inset-top)) + 4px);
+      left: calc(max(14px, env(safe-area-inset-left)) + 4px);
+      width: min(280px, calc(100vw - 240px));
+      max-width: 290px;
       padding: 10px 12px;
       background: #000;
       border: 1px solid rgba(255, 255, 255, 0.45);
       z-index: 20;
       font-size: 11px;
       color: #fff;
-    }
-    @media (max-width: 680px) {
-      #debugPanel {
-        width: calc(100vw - 32px);
-        max-width: none;
-      }
     }
     #debugPanel.collapsed .debug-body {
       display: none;
@@ -103,7 +97,7 @@
     }
     .toggle-row {
       display: flex; justify-content: space-between; align-items: center;
-      padding-top: 4px;
+      padding-top: 6px;
       border-top: 1px solid rgba(255, 255, 255, 0.2);
       font-size: 11px; color: #fff;
       cursor: pointer; user-select: none;
@@ -113,10 +107,10 @@
       accent-color: #fff; cursor: pointer;
     }
 
-    /* 适配 iPad 窗口的底部控制栏 */
+    /* 适配 iPad 与竖屏手机的底部控制栏 */
     #footer {
       position: absolute; left: 16px; right: 16px;
-      bottom: calc(max(24px, env(safe-area-inset-bottom)) + 16px);
+      bottom: calc(max(22px, env(safe-area-inset-bottom)) + 14px);
       display: flex; align-items: center; justify-content: center; gap: 16px;
       color: rgba(255, 255, 255, 0.72); font-size: 12px; letter-spacing: .08em;
       font-variant-numeric: tabular-nums;
@@ -134,9 +128,9 @@
 
     #cameraFrame {
       position: absolute;
-      top: calc(max(16px, env(safe-area-inset-top)) + 6px);
-      right: calc(max(16px, env(safe-area-inset-right)) + 6px);
-      width: min(200px, 26vw); aspect-ratio: 4 / 3;
+      top: calc(max(14px, env(safe-area-inset-top)) + 4px);
+      right: calc(max(14px, env(safe-area-inset-right)) + 4px);
+      width: min(190px, 25vw); aspect-ratio: 4 / 3;
       padding: 4px; border: 1px solid rgba(255, 255, 255, 0.45);
       background: #000; overflow: hidden;
       z-index: 10;
@@ -146,9 +140,37 @@
       object-fit: cover; background: #000;
       transform: scaleX(-1);
     }
-    @media (max-width: 600px) {
-      #cameraFrame { top: 12px; right: 12px; width: 28vw; }
+
+    /* 竖屏 / 手机端专属 UI 适配 */
+    @media (orientation: portrait), (max-width: 680px) {
+      #cameraFrame {
+        top: calc(max(12px, env(safe-area-inset-top)) + 2px);
+        right: calc(max(12px, env(safe-area-inset-right)) + 2px);
+        width: min(124px, 30vw);
+      }
+      #debugPanel {
+        top: calc(max(12px, env(safe-area-inset-top)) + 2px);
+        left: calc(max(12px, env(safe-area-inset-left)) + 2px);
+        width: min(230px, calc(100vw - 156px));
+        max-width: none;
+        padding: 8px 10px;
+      }
+      #debugPanel:not(.collapsed) {
+        width: calc(100vw - 24px);
+        z-index: 30;
+      }
+      #footer {
+        left: 12px; right: 12px;
+        bottom: calc(max(16px, env(safe-area-inset-bottom)) + 10px);
+        gap: 10px;
+        font-size: 11px;
+      }
+      #startButton {
+        padding: 9px 14px;
+        min-height: 38px;
+      }
     }
+
     #cameraPlaceholder, .preview, .controls, h1, .intro, .readout, .help { display: none !important; }
   </style>
 </head>
@@ -170,18 +192,10 @@
 
         <div class="slider-row">
           <div class="slider-label">
-            <span>行间距 (gap em)</span>
-            <span id="gapVal" class="slider-val">-0.05</span>
+            <span>底部 XHET 高度</span>
+            <span id="xhetVal" class="slider-val">50</span>
           </div>
-          <input id="gapSlider" type="range" min="-0.90" max="1.00" step="0.01" value="-0.05">
-        </div>
-
-        <div class="slider-row">
-          <div class="slider-label">
-            <span>字号倍率 (size scale)</span>
-            <span id="sizeVal" class="slider-val">1.00</span>
-          </div>
-          <input id="sizeSlider" type="range" min="0.30" max="1.60" step="0.01" value="1.00">
+          <input id="xhetSlider" type="range" min="0" max="100" step="1" value="50">
         </div>
 
         <label class="toggle-row" for="gestureWeightToggle">
@@ -232,11 +246,9 @@
   const debugPanel = document.querySelector("#debugPanel");
   const toggleDebugBtn = document.querySelector("#toggleDebugBtn");
   const weightSlider = document.querySelector("#weightSlider");
-  const gapSlider = document.querySelector("#gapSlider");
-  const sizeSlider = document.querySelector("#sizeSlider");
+  const xhetSlider = document.querySelector("#xhetSlider");
   const weightVal = document.querySelector("#weightVal");
-  const gapVal = document.querySelector("#gapVal");
-  const sizeVal = document.querySelector("#sizeVal");
+  const xhetVal = document.querySelector("#xhetVal");
   const gestureWeightToggle = document.querySelector("#gestureWeightToggle");
 
   const topSpans = [];
@@ -277,8 +289,8 @@
   let lastFitScale = 1;
   let lastReadoutText = "";
 
-  let customGapEm = null;
-  let customSizeScale = null;
+  // 底部 XHET 基准高度（默认 50，对应 delta = 0；顶部为 100 - 底部）
+  let baseBottomXhet = 50;
   let isGestureWeightEnabled = false;
 
   let palmStableFrames = 0;
@@ -315,18 +327,15 @@
     const viewH = window.innerHeight;
     const avgW = currentWeights.reduce((a, b) => a + b, 0) / CHAR_COUNT;
 
-    const defaultGapEm = getDefaultGapEm(avgW);
-    const defaultSizeScale = getDefaultSizeScale(avgW);
-
-    const activeGapEm = customGapEm !== null ? customGapEm : defaultGapEm;
-    const activeSizeScale = customSizeScale !== null ? customSizeScale : defaultSizeScale;
+    const activeGapEm = getDefaultGapEm(avgW);
+    const activeSizeScale = getDefaultSizeScale(avgW);
 
     const viewportMin = Math.min(viewW, viewH);
     const viewportMax = Math.max(viewW, viewH);
     const isPortrait = viewH > viewW;
-    const baseMultiplier = isPortrait ? 0.20 : 0.25;
+    const baseMultiplier = isPortrait ? 0.18 : 0.25;
 
-    const minAllowedSize = Math.max(32, viewportMin * 0.07);
+    const minAllowedSize = Math.max(28, viewportMin * 0.065);
     const maxAllowedSize = Math.min(620, viewportMax * 0.36);
 
     const rawBaseSize = Math.max(minAllowedSize, Math.min(maxAllowedSize, viewW * baseMultiplier));
@@ -337,7 +346,7 @@
       for (let i = 0; i < allSpans.length; i++) {
         allSpans[i].style.fontSize = `${targetFontSize}px`;
       }
-      const availableWidth = viewW * 0.94;
+      const availableWidth = viewW * (isPortrait ? 0.92 : 0.94);
       const measuredWidth = Math.max(topRow.scrollWidth, bottomRow.scrollWidth);
       lastFitScale = measuredWidth > 0 ? Math.min(1, availableWidth / measuredWidth) : 1;
       lastMeasuredViewW = viewW;
@@ -361,14 +370,14 @@
     for (let i = 0; i < CHAR_COUNT; i++) {
       const w = Math.round(currentWeights[i]);
       const delta = currentXhetDeltas[i];
-      const bottomXhet = Math.round(Math.min(100, Math.max(0, 50 + delta)));
+      const bottomXhet = Math.round(Math.min(100, Math.max(0, baseBottomXhet + delta)));
       const topXhet = 100 - bottomXhet;
-      const varSettings = `"wght" ${w}, "XHET" ${topXhet}, "wdth" 75, "opsz" 72`;
+      const topVarSettings = `"wght" ${w}, "XHET" ${topXhet}, "wdth" 75, "opsz" 72`;
       const bottomVarSettings = `"wght" ${w}, "XHET" ${bottomXhet}, "wdth" 75, "opsz" 72`;
-      const combinedKey = `${varSettings}|${bottomVarSettings}`;
+      const combinedKey = `${topVarSettings}|${bottomVarSettings}`;
 
       if (combinedKey !== lastAppliedVariations[i]) {
-        topSpans[i].style.fontVariationSettings = varSettings;
+        topSpans[i].style.fontVariationSettings = topVarSettings;
         bottomSpans[i].style.fontVariationSettings = bottomVarSettings;
         lastAppliedVariations[i] = combinedKey;
       }
@@ -378,23 +387,16 @@
     const nextReadout = `wght ${roundedW}`;
     if (nextReadout !== lastReadoutText) {
       weightVal.textContent = `${roundedW}`;
-      gapVal.textContent = `${activeGapEm.toFixed(2)}`;
-      sizeVal.textContent = `${activeSizeScale.toFixed(2)}`;
       weightReadout.textContent = nextReadout;
       lastReadoutText = nextReadout;
-    } else {
-      gapVal.textContent = `${activeGapEm.toFixed(2)}`;
-      sizeVal.textContent = `${activeSizeScale.toFixed(2)}`;
     }
+    xhetVal.textContent = `${Math.round(baseBottomXhet)}`;
 
     if (document.activeElement !== weightSlider) {
       weightSlider.value = `${roundedW}`;
     }
-    if (document.activeElement !== gapSlider) {
-      gapSlider.value = `${activeGapEm.toFixed(2)}`;
-    }
-    if (document.activeElement !== sizeSlider) {
-      sizeSlider.value = `${activeSizeScale.toFixed(2)}`;
+    if (document.activeElement !== xhetSlider) {
+      xhetSlider.value = `${Math.round(baseBottomXhet)}`;
     }
   }
 
@@ -409,14 +411,10 @@
     updateDOM();
   });
 
-  gapSlider.addEventListener("input", () => {
-    customGapEm = Number(gapSlider.value);
-    updateDOM();
-  });
-
-  sizeSlider.addEventListener("input", () => {
-    customSizeScale = Number(sizeSlider.value);
-    markLayoutDirty();
+  // 拉大底部 XHET 高度时，所有字母底部 XHET 一起升高，顶部自动为 100 - 底部
+  xhetSlider.addEventListener("input", () => {
+    baseBottomXhet = Number(xhetSlider.value);
+    currentXhetDeltas.fill(0);
     updateDOM();
   });
 
@@ -587,6 +585,19 @@
     };
   }
 
+  // 计算单只手在整行字符上产生的 XHET 影响量
+  function computeSingleHandContribution(hand) {
+    const out = new Array(CHAR_COUNT).fill(0);
+    if (!hand) return out;
+    const spread = 2.2;
+    for (let i = 0; i < CHAR_COUNT; i++) {
+      const dist = Math.abs(i - hand.letterPos);
+      const factor = Math.exp(-(dist * dist) / (2 * spread * spread));
+      out[i] = hand.xhetDelta * factor;
+    }
+    return out;
+  }
+
   function updateFromResults(results) {
     const rawHands = results.landmarks || [];
 
@@ -651,28 +662,33 @@
       const targetDeltas = new Array(CHAR_COUNT).fill(0);
 
       if (activeHands.length === 1) {
-        const h = activeHands[0];
-        const spread = 2.2;
+        const single = computeSingleHandContribution(activeHands[0]);
         for (let i = 0; i < CHAR_COUNT; i++) {
-          const dist = Math.abs(i - h.letterPos);
-          const factor = Math.exp(-(dist * dist) / (2 * spread * spread));
-          targetDeltas[i] = h.xhetDelta * factor;
+          targetDeltas[i] = single[i];
         }
       } else {
         const lH = activeHands[0];
         const rH = activeHands[activeHands.length - 1];
         const span = Math.max(rH.letterPos - lH.letterPos, 0.001);
 
+        // 只有左右手都未握拳时才做双点平滑过渡；若某侧握拳，该侧完全冻结，另一侧按自身贡献独立变化
+        const leftContrib = computeSingleHandContribution(lH);
+        const rightContrib = computeSingleHandContribution(rH);
+
         for (let i = 0; i < CHAR_COUNT; i++) {
-          if (i <= lH.letterPos) {
-            const dist = lH.letterPos - i;
-            targetDeltas[i] = lH.xhetDelta * Math.exp(-(dist * dist) / 4);
-          } else if (i >= rH.letterPos) {
-            const dist = i - rH.letterPos;
-            targetDeltas[i] = rH.xhetDelta * Math.exp(-(dist * dist) / 4);
+          if (!freezeLeft && !freezeRight) {
+            if (i <= lH.letterPos) {
+              const dist = lH.letterPos - i;
+              targetDeltas[i] = lH.xhetDelta * Math.exp(-(dist * dist) / 4);
+            } else if (i >= rH.letterPos) {
+              const dist = i - rH.letterPos;
+              targetDeltas[i] = rH.xhetDelta * Math.exp(-(dist * dist) / 4);
+            } else {
+              const t = (i - lH.letterPos) / span;
+              targetDeltas[i] = lH.xhetDelta + t * (rH.xhetDelta - lH.xhetDelta);
+            }
           } else {
-            const t = (i - lH.letterPos) / span;
-            targetDeltas[i] = lH.xhetDelta + t * (rH.xhetDelta - lH.xhetDelta);
+            targetDeltas[i] = leftContrib[i] + rightContrib[i];
           }
         }
       }
